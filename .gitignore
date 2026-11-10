@@ -1,0 +1,4 @@
+node_modules/
+.trek-dev/
+*.tgz
+plugin.zip

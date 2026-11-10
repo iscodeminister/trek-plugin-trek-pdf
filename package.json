@@ -1,0 +1,16 @@
+{
+  "name": "trek-pdf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "dev": "npx -y trek-plugin-sdk dev",
+    "pack": "npx -y trek-plugin-sdk pack",
+    "test": "node --test test/report.test.js",
+    "shot": "node scripts/store-shot.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.0",
+    "trek-plugin-sdk": "^1.7.0"
+  }
+}

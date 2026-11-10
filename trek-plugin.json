@@ -1,0 +1,33 @@
+{
+  "id": "trek-pdf",
+  "name": "Trek PDF",
+  "version": "1.1.0",
+  "apiVersion": 1,
+  "author": "Your Name",
+  "description": "Generate a PDF trip report with a route map, day-by-day itinerary, accommodation and costs",
+  "type": "trip-page",
+  "trek": ">=4.0.0 <6.0.0",
+  "nativeModules": false,
+  "permissions": [
+    "db:read:trips",
+    "db:read:costs",
+    "db:write:files",
+    "http:outbound:tile.openstreetmap.org"
+  ],
+  "requiredAddons": [],
+  "pluginDependencies": [],
+  "icon": "FileText",
+  "egress": [
+    "tile.openstreetmap.org"
+  ],
+  "settings": [
+    {
+      "key": "basemap",
+      "label": "OpenStreetMap background",
+      "input_type": "checkbox",
+      "scope": "instance",
+      "default": true,
+      "hint": "Draw OpenStreetMap tiles under the report maps. The server fetches tiles from tile.openstreetmap.org; turn off to keep every map fully offline (routes and markers only)."
+    }
+  ]
+}

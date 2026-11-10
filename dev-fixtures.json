@@ -1,0 +1,477 @@
+{
+  "actingUserId": 1,
+  "budgetAddonEnabled": true,
+  "trips": {
+    "1": {
+      "members": [
+        1
+      ],
+      "data": {
+        "id": 1,
+        "title": "Japan Summer 2026",
+        "description": "Two weeks across Tokyo, Kyoto and Osaka: temples, food and the Shinkansen.",
+        "start_date": "2026-08-01",
+        "end_date": "2026-08-05",
+        "currency": "JPY"
+      },
+      "places": [
+        {
+          "id": 1,
+          "name": "浅草寺 Senso-ji",
+          "lat": 35.7148,
+          "lng": 139.7967,
+          "category": {
+            "name": "Temple"
+          },
+          "address": "2-3-1 Asakusa, Taito",
+          "place_time": "09:00"
+        },
+        {
+          "id": 2,
+          "name": "Tokyo Skytree",
+          "lat": 35.7101,
+          "lng": 139.8107,
+          "category": {
+            "name": "Viewpoint"
+          },
+          "place_time": "11:30"
+        },
+        {
+          "id": 3,
+          "name": "Ueno Park",
+          "lat": 35.7156,
+          "lng": 139.7745,
+          "category": {
+            "name": "Park"
+          }
+        },
+        {
+          "id": 4,
+          "name": "Meiji Jingu",
+          "lat": 35.6764,
+          "lng": 139.6993,
+          "category": {
+            "name": "Shrine"
+          },
+          "place_time": "08:30"
+        },
+        {
+          "id": 5,
+          "name": "Shibuya Crossing",
+          "lat": 35.6595,
+          "lng": 139.7005,
+          "category": {
+            "name": "Landmark"
+          }
+        },
+        {
+          "id": 6,
+          "name": "Shinjuku Gyoen",
+          "lat": 35.6852,
+          "lng": 139.7101,
+          "category": {
+            "name": "Park"
+          },
+          "notes": "Closed Mondays. Entry 500 JPY."
+        },
+        {
+          "id": 7,
+          "name": "Fushimi Inari Taisha",
+          "lat": 34.9671,
+          "lng": 135.7727,
+          "category": {
+            "name": "Shrine"
+          },
+          "place_time": "07:00",
+          "notes": "Go early to beat the crowds; the full hike to the summit takes about two hours."
+        },
+        {
+          "id": 8,
+          "name": "Kiyomizu-dera",
+          "lat": 34.9949,
+          "lng": 135.785,
+          "category": {
+            "name": "Temple"
+          }
+        },
+        {
+          "id": 9,
+          "name": "祇園 Gion",
+          "lat": 35.0037,
+          "lng": 135.7788,
+          "category": {
+            "name": "District"
+          },
+          "place_time": "18:00"
+        },
+        {
+          "id": 10,
+          "name": "Arashiyama Bamboo Grove",
+          "lat": 35.017,
+          "lng": 135.6713,
+          "category": {
+            "name": "Nature"
+          }
+        },
+        {
+          "id": 11,
+          "name": "Kinkaku-ji",
+          "lat": 35.0394,
+          "lng": 135.7292,
+          "category": {
+            "name": "Temple"
+          }
+        },
+        {
+          "id": 12,
+          "name": "Dotonbori",
+          "lat": 34.6687,
+          "lng": 135.5013,
+          "category": {
+            "name": "District"
+          }
+        },
+        {
+          "id": 13,
+          "name": "Osaka Castle",
+          "lat": 34.6873,
+          "lng": 135.5262,
+          "category": {
+            "name": "Castle"
+          }
+        },
+        {
+          "id": 14,
+          "name": "teamLab Planets",
+          "lat": 35.6491,
+          "lng": 139.7898,
+          "category": {
+            "name": "Museum"
+          }
+        },
+        {
+          "id": 15,
+          "name": "Nara Park",
+          "lat": 34.685,
+          "lng": 135.843,
+          "category": {
+            "name": "Park"
+          }
+        }
+      ],
+      "days": [
+        {
+          "id": 1,
+          "date": "2026-08-01",
+          "title": "Asakusa & Ueno",
+          "assignments": [
+            {
+              "id": 10,
+              "order_index": 0,
+              "place_id": 1,
+              "place": {
+                "id": 1,
+                "name": "浅草寺 Senso-ji",
+                "lat": 35.7148,
+                "lng": 139.7967,
+                "category": {
+                  "name": "Temple"
+                },
+                "address": "2-3-1 Asakusa, Taito",
+                "place_time": "09:00"
+              }
+            },
+            {
+              "id": 11,
+              "order_index": 1,
+              "place_id": 2,
+              "place": {
+                "id": 2,
+                "name": "Tokyo Skytree",
+                "lat": 35.7101,
+                "lng": 139.8107,
+                "category": {
+                  "name": "Viewpoint"
+                },
+                "place_time": "11:30"
+              }
+            },
+            {
+              "id": 12,
+              "order_index": 2,
+              "place_id": 3,
+              "place": {
+                "id": 3,
+                "name": "Ueno Park",
+                "lat": 35.7156,
+                "lng": 139.7745,
+                "category": {
+                  "name": "Park"
+                }
+              }
+            }
+          ],
+          "notes_items": [
+            {
+              "text": "Pick up JR Pass at Tokyo Station"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "date": "2026-08-02",
+          "title": "Shrines and Shibuya",
+          "assignments": [
+            {
+              "id": 20,
+              "order_index": 0,
+              "place_id": 4,
+              "place": {
+                "id": 4,
+                "name": "Meiji Jingu",
+                "lat": 35.6764,
+                "lng": 139.6993,
+                "category": {
+                  "name": "Shrine"
+                },
+                "place_time": "08:30"
+              }
+            },
+            {
+              "id": 21,
+              "order_index": 1,
+              "place_id": 6,
+              "place": {
+                "id": 6,
+                "name": "Shinjuku Gyoen",
+                "lat": 35.6852,
+                "lng": 139.7101,
+                "category": {
+                  "name": "Park"
+                },
+                "notes": "Closed Mondays. Entry 500 JPY."
+              }
+            },
+            {
+              "id": 22,
+              "order_index": 2,
+              "place_id": 5,
+              "place": {
+                "id": 5,
+                "name": "Shibuya Crossing",
+                "lat": 35.6595,
+                "lng": 139.7005,
+                "category": {
+                  "name": "Landmark"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "date": "2026-08-03",
+          "title": "Shinkansen to Kyoto",
+          "assignments": [
+            {
+              "id": 30,
+              "order_index": 0,
+              "place_id": 7,
+              "place": {
+                "id": 7,
+                "name": "Fushimi Inari Taisha",
+                "lat": 34.9671,
+                "lng": 135.7727,
+                "category": {
+                  "name": "Shrine"
+                },
+                "place_time": "07:00",
+                "notes": "Go early to beat the crowds; the full hike to the summit takes about two hours."
+              }
+            },
+            {
+              "id": 31,
+              "order_index": 1,
+              "place_id": 8,
+              "place": {
+                "id": 8,
+                "name": "Kiyomizu-dera",
+                "lat": 34.9949,
+                "lng": 135.785,
+                "category": {
+                  "name": "Temple"
+                }
+              }
+            },
+            {
+              "id": 32,
+              "order_index": 2,
+              "place_id": 9,
+              "place": {
+                "id": 9,
+                "name": "祇園 Gion",
+                "lat": 35.0037,
+                "lng": 135.7788,
+                "category": {
+                  "name": "District"
+                },
+                "place_time": "18:00"
+              }
+            }
+          ],
+          "notes_items": [
+            {
+              "text": "京都駅で新幹線を降りたら、まずホテルに荷物を預ける。夕方は鴨川沿いを散歩。"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "date": "2026-08-04",
+          "title": "West Kyoto",
+          "assignments": [
+            {
+              "id": 40,
+              "order_index": 0,
+              "place_id": 10,
+              "place": {
+                "id": 10,
+                "name": "Arashiyama Bamboo Grove",
+                "lat": 35.017,
+                "lng": 135.6713,
+                "category": {
+                  "name": "Nature"
+                }
+              }
+            },
+            {
+              "id": 41,
+              "order_index": 1,
+              "place_id": 11,
+              "place": {
+                "id": 11,
+                "name": "Kinkaku-ji",
+                "lat": 35.0394,
+                "lng": 135.7292,
+                "category": {
+                  "name": "Temple"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "date": "2026-08-05",
+          "title": "Osaka day trip",
+          "assignments": [
+            {
+              "id": 50,
+              "order_index": 0,
+              "place_id": 13,
+              "place": {
+                "id": 13,
+                "name": "Osaka Castle",
+                "lat": 34.6873,
+                "lng": 135.5262,
+                "category": {
+                  "name": "Castle"
+                }
+              }
+            },
+            {
+              "id": 51,
+              "order_index": 1,
+              "place_id": 12,
+              "place": {
+                "id": 12,
+                "name": "Dotonbori",
+                "lat": 34.6687,
+                "lng": 135.5013,
+                "category": {
+                  "name": "District"
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "accommodations": [
+        {
+          "id": 1,
+          "place_name": "Hotel Gracery Shinjuku",
+          "start_day_id": 1,
+          "end_day_id": 3,
+          "check_in": "15:00",
+          "check_out": "11:00"
+        },
+        {
+          "id": 2,
+          "place_name": "Ryokan Kinoe, Kyoto",
+          "start_day_id": 3,
+          "end_day_id": 5,
+          "check_in": "16:00",
+          "check_out": "10:00"
+        }
+      ],
+      "costs": [
+        {
+          "id": 1,
+          "name": "Flights FRA-HND return",
+          "category": "Transport",
+          "total_price": 180000,
+          "persons": 2
+        },
+        {
+          "id": 2,
+          "name": "JR Pass 7 days",
+          "category": "Transport",
+          "total_price": 100000,
+          "persons": 2
+        },
+        {
+          "id": 3,
+          "name": "Hotel Gracery Shinjuku",
+          "category": "Accommodation",
+          "total_price": 64000
+        },
+        {
+          "id": 4,
+          "name": "Ryokan Kinoe",
+          "category": "Accommodation",
+          "total_price": 88000
+        },
+        {
+          "id": 5,
+          "name": "teamLab Planets tickets",
+          "category": "Activities",
+          "total_price": 7600,
+          "persons": 2
+        },
+        {
+          "id": 6,
+          "name": "Sushi dinner Tsukiji",
+          "category": "Food",
+          "total_price": 24000
+        },
+        {
+          "id": 7,
+          "name": "Street food Dotonbori",
+          "category": "Food",
+          "total_price": 6500
+        },
+        {
+          "id": 8,
+          "name": "Travel insurance",
+          "category": "Other",
+          "total_price": 15000,
+          "currency": "EUR"
+        }
+      ]
+    }
+  },
+  "users": {},
+  "config": {
+    "basemap": true
+  }
+}
