@@ -140,8 +140,10 @@ test('basemap route validates an explicit view; unknown styles fall back', async
     assert.strictEqual(r.status, 400, JSON.stringify(view));
   }
   const s = await call(on.ctx, '/summary', { tripId: 1 });
-  assert.deepStrictEqual(s.body.styles, ['positron', 'bright', 'liberty', 'dark', 'fiord']);
+  assert.deepStrictEqual(s.body.styles, ['positron', 'bright', 'liberty', 'dark', 'fiord', 'osm']);
   assert.strictEqual(s.body.style, 'bright'); // admin default
+  const noConfig = createMockHost({ ...structuredClone(fixtures), grants: GRANTS, config: { map_style: 'nope' } });
+  assert.strictEqual((await call(noConfig.ctx, '/summary', { tripId: 1 })).body.style, 'bright'); // built-in default
   const m = s.body.map.markers.find((k) => k.n === 1);
   assert.ok(Number.isFinite(m.lat) && Number.isFinite(m.lng), 'markers carry lat/lng for client-side zoom');
   assert.ok(s.body.map.routes.every((r) => r.ll.length === r.points.length));

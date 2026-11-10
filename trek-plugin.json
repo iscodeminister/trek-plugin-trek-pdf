@@ -1,7 +1,7 @@
 {
   "id": "trek-pdf",
   "name": "Trek PDF",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "apiVersion": 1,
   "author": "Your Name",
   "description": "PDF trip report with OpenFreeMap route maps, day-by-day itinerary, accommodation and costs, in your TREK language",
@@ -12,38 +12,40 @@
     "db:read:trips",
     "db:read:costs",
     "db:write:files",
-    "http:outbound:tiles.openfreemap.org"
+    "http:outbound:tiles.openfreemap.org",
+    "http:outbound:tile.openstreetmap.org"
   ],
   "requiredAddons": [],
   "pluginDependencies": [],
   "icon": "FileText",
   "egress": [
-    "tiles.openfreemap.org"
+    "tiles.openfreemap.org",
+    "tile.openstreetmap.org"
   ],
   "settings": [
     {
       "key": "basemap",
-      "label": "Map background (OpenFreeMap)",
+      "label": "Map background",
       "input_type": "checkbox",
       "scope": "instance",
       "default": true,
-      "hint": "Draw OpenFreeMap Positron streets, water and place names under the report maps. The server fetches vector tiles from tiles.openfreemap.org; turn off to keep every map fully offline (routes and markers only)."
+      "hint": "Draw a map (OpenFreeMap or OpenStreetMap, as picked in the tab) under the report maps. The server fetches tiles from tiles.openfreemap.org or tile.openstreetmap.org; turn off to keep every map fully offline (routes and markers only)."
     },
     {
       "key": "map_style",
       "label": "Default map style",
       "input_type": "select",
       "scope": "instance",
-      "default": "positron",
+      "default": "bright",
       "hint": "The style the Report tab starts with; each user can still pick another one in the tab.",
       "options": [
         {
-          "value": "positron",
-          "label": "Positron (light grey)"
-        },
-        {
           "value": "bright",
           "label": "Bright (colourful)"
+        },
+        {
+          "value": "positron",
+          "label": "Positron (light grey)"
         },
         {
           "value": "liberty",
@@ -56,6 +58,10 @@
         {
           "value": "fiord",
           "label": "Fiord (blue-grey)"
+        },
+        {
+          "value": "osm",
+          "label": "OpenStreetMap (standard tiles)"
         }
       ]
     }

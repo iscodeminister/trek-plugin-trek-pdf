@@ -515,11 +515,11 @@ async function renderPdf(data, opts = {}) {
   // ---- basemaps: fetched after layout, then dropped into the slots drawMap reserved.
   const slots = doc.mapSlots || [];
   const bases = await Promise.all(slots.map((s) => (opts.basemap
-    ? opts.basemap(s.map, { labelScale: s.small ? 0.8 : 1, measure: (txt, size, bold) => doc.measure(txt, size, bold), reserved: s.reserved }).catch(() => null)
+    ? opts.basemap(s.map, { labelScale: s.small ? 0.8 : 1, scale: s.small ? 2.5 : 2, measure: (txt, size, bold) => doc.measure(txt, size, bold), reserved: s.reserved }).catch(() => null)
     : null)));
   slots.forEach((s, i) => {
     const b = bases[i];
-    const ops = b ? capture(doc, () => paintBasemap(doc, b, s.ox, s.oy, s.map.w, s.map.h)).concat(s.attribution) : s.grid;
+    const ops = b ? capture(doc, () => { paintBasemap(doc, b, s.ox, s.oy, s.map.w, s.map.h); s.attribution(b.attribution); }) : s.grid;
     s.page[s.index] = ops.join('\n');
   });
   return doc;
@@ -527,6 +527,7 @@ async function renderPdf(data, opts = {}) {
 
 /** Draw basemap geometry (map-local points) at the map's page origin. */
 function paintBasemap(doc, b, ox, oy, w, h) {
+  if (b.raster) { doc.ops.push(...doc.imageOps(b.raster, ox, oy, w, h)); return; }
   const shift = (rings) => rings.map((r) => r.map(([x, y]) => [ox + x, oy + y]));
   doc.fill(b.background).rect(ox, oy, w, h);
   for (const l of b.layers) {
@@ -563,11 +564,12 @@ function drawMap(doc, map, ox, oy) {
       for (const g of map.grid) if (g.label && g.lx < w - 28 && g.ly > 10) doc.text(g.label, ox + g.lx, oy + g.ly, { size: 6, color: '#94a3b8' });
     });
     const small = w < 200;
-    const attribution = capture(doc, () => {
-      const fs = small ? 4.5 : 6, aw = doc.measure(ATTRIBUTION, fs) + 6;
+    // Drawn once the basemap (and so its source's credit line) is known.
+    const attribution = (text) => {
+      const fs = small ? 4.5 : 6, aw = doc.measure(text, fs) + 6;
       doc.fill('#ffffff').rect(ox, oy + h - fs - 5, aw, fs + 5);
-      doc.text(ATTRIBUTION, ox + 3, oy + h - 3.5, { size: fs, color: MUTED });
-    });
+      doc.text(text, ox + 3, oy + h - 3.5, { size: fs, color: MUTED });
+    };
     // Labels keep clear of route markers, the scale bar and the attribution.
     const reserved = map.markers.map((m) => [m.x - 10, m.y - 10, m.x + 10, m.y + 10]);
     // Scale bar: the first corner free of route markers (bottom-left holds the attribution).

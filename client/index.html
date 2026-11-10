@@ -158,7 +158,7 @@
       var R = 6371008.8, K_MIN = 512 * 2 / (2 * Math.PI), K_MAX = 512 * Math.pow(2, 17) / (2 * Math.PI);
       var M = null, cur = null, svg = null, gBase = null, gTop = null, baseView = null, baseHalo = '#ffffff';
       var baseTimer = null, baseSeq = 0, baseCache = {}, baseKeys = [], style = 'positron', styleTouched = false;
-      var STYLE_NAMES = { positron: 'Positron', bright: 'Bright', liberty: 'Liberty', dark: 'Dark', fiord: 'Fiord' };
+      var STYLE_NAMES = { positron: 'Positron', bright: 'Bright', liberty: 'Liberty', dark: 'Dark', fiord: 'Fiord', osm: 'OpenStreetMap' };
       var mx = function (lng) { return lng * Math.PI / 180; };
       var my = function (lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); };
       var clamp = function (v, lo, hi) { return Math.min(hi, Math.max(lo, v)); };
@@ -185,6 +185,7 @@
           var key = [style, v.cx.toFixed(6), v.cy.toFixed(6), v.k.toFixed(1), LOCALE].join('|');
           if (!baseCache[key]) {
             var body = opts(); body.view = v; body.style = style; body.reserved = markerBoxes();
+            body.scale = Math.min(2, window.devicePixelRatio || 1); // raster style resolution
             baseCache[key] = trek.invoke('/basemap', { method: 'POST', body: body })
               .then(unwrap).then(function (r) { return r && r.basemap ? r.basemap : null; })
               .catch(function () { delete baseCache[key]; return null; });
@@ -205,6 +206,11 @@
         baseHalo = b.halo || '#ffffff';
         svg.style.background = b.background;
         el('rect', { x: -M.w, y: -M.h, width: M.w * 3, height: M.h * 3, fill: b.background }, gBase);
+        if (b.image) { // raster style (OpenStreetMap): one image for the whole view
+          el('image', { href: b.image, x: 0, y: 0, width: M.w, height: M.h, preserveAspectRatio: 'none' }, gBase);
+          gBase.dataset.attribution = b.attribution;
+          return;
+        }
         b.layers.forEach(function (l) {
           if (l.kind === 'fill') el('path', { d: l.d, fill: l.color }, gBase);
           else {

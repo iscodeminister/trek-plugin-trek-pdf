@@ -30,6 +30,7 @@ class PdfDoc {
     this.title = opts.title || 'Document';
     this.pages = [];
     this.ops = null;
+    this.images = [];
     // One PDF font resource per distinct font file; families pick regular/bold faces.
     this.faces = [];
     const face = (font) => {
@@ -163,6 +164,13 @@ class PdfDoc {
     return this;
   }
 
+  /** Register an RGB raster; returns ops that paint it into the box (top-left origin). */
+  imageOps(raster, x, y, w, h) {
+    const name = `Im${this.images.length + 1}`;
+    this.images.push({ name, raster });
+    return ['q', `${n(w)} 0 0 ${n(h)} ${n(x)} ${n(this.Y(y + h))} cm`, `/${name} Do`, 'Q'];
+  }
+
   /** Paths in top-left coordinates. closed rings are filled/clipped; open ones stroked. */
   path(rings, mode = 'fill') {
     const parts = [];
@@ -240,7 +248,12 @@ class PdfDoc {
       fontRefs[f.key] = add(`<< /Type /Font /Subtype /Type0 /BaseFont /${base} /Encoding /Identity-H /DescendantFonts [${cid} 0 R] /ToUnicode ${toUni} 0 R >>`);
     }
     const fontDict = Object.entries(fontRefs).map(([k, r]) => `/${k} ${r} 0 R`).join(' ');
-    const resources = `<< /Font << ${fontDict} >> >>`;
+    const imgRefs = {};
+    for (const im of this.images) {
+      imgRefs[im.name] = add(stream(`/Type /XObject /Subtype /Image /Width ${im.raster.w} /Height ${im.raster.h} /ColorSpace /DeviceRGB /BitsPerComponent 8`, im.raster.rgb));
+    }
+    const xobjDict = Object.entries(imgRefs).map(([k, r]) => `/${k} ${r} 0 R`).join(' ');
+    const resources = `<< /Font << ${fontDict} >>${xobjDict ? ` /XObject << ${xobjDict} >>` : ''} >>`;
 
     const kids = [];
     for (const ops of this.pages) {

@@ -1,15 +1,15 @@
 // Built plugin entry — runs in an isolated child process.
 const { definePlugin } = require('trek-plugin-sdk');
 const { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS } = require('./report');
-const { renderBasemap, toSvg, STYLE_IDS } = require('./basemap');
+const { renderBasemap, toSvg, STYLE_IDS, DEFAULT_STYLE } = require('./basemap');
 const { normalizeLang, intlLocale, pdfLang, uiBundle } = require('./i18n');
 
 const UI_MAP = [640, 380];
 const dayMap = (d, w, h) => buildMap({ days: [d], unscheduled: [] }, w, h, { minSpan: 0.0006, pad: 48 });
 // Instance setting (Admin → Plugins → Trek PDF): OpenFreeMap background on/off.
 const basemapOn = (ctx) => ctx.config.basemap !== false && ctx.config.basemap !== 'false';
-// The user's pick from the tab, else the admin's default (Instance settings), else Positron.
-const styleOf = (ctx, wanted) => (STYLE_IDS.includes(wanted) ? wanted : STYLE_IDS.includes(ctx.config.map_style) ? ctx.config.map_style : 'positron');
+// The user's pick from the tab, else the admin's default (Instance settings), else Bright.
+const styleOf = (ctx, wanted) => (STYLE_IDS.includes(wanted) ? wanted : STYLE_IDS.includes(ctx.config.map_style) ? ctx.config.map_style : DEFAULT_STYLE);
 const finite = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 
 const json = (status, body) => ({ status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -122,7 +122,8 @@ module.exports = definePlugin({
           if (!finite(v.cx, -Math.PI, Math.PI) || !finite(v.cy, -3.2, 3.2) || !finite(v.k, 10, 2e7)) return json(400, { error: 'invalid view' });
           const reserved = (Array.isArray(body.reserved) ? body.reserved.slice(0, 400) : [])
             .filter((b) => Array.isArray(b) && b.length === 4 && b.every((n) => finite(n, -1e4, 1e4)));
-          const base = await renderBasemap({ view: { cx: v.cx, cy: v.cy, k: v.k }, w: UI_MAP[0], h: UI_MAP[1] }, { lang, style, labelScale: 1.25, reserved });
+          const scale = Math.min(2, Math.max(1, Number(body.scale) || 1)); // raster style: device pixel ratio
+          const base = await renderBasemap({ view: { cx: v.cx, cy: v.cy, k: v.k }, w: UI_MAP[0], h: UI_MAP[1] }, { lang, style, labelScale: 1.25, reserved, scale });
           return json(200, { basemap: base ? toSvg(base) : null });
         }
         const bad = needTrip(tripId);

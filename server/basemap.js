@@ -5,6 +5,8 @@
 const zlib = require('zlib');
 const { decodeTile } = require('./mvt');
 const { covers } = require('./font');
+const raster = require('./tiles');
+const { encodePng } = require('./png');
 
 const HOST = 'tiles.openfreemap.org';
 const ATTRIBUTION = 'OpenFreeMap © OpenMapTiles © OpenStreetMap';
@@ -47,7 +49,9 @@ const STYLES = {
     label: '#b5c8cf', labelSoft: '#a3b6c0', labelSuburb: '#4a8aa3', waterLabel: '#6e7da4', halo: '#152055',
   },
 };
-const STYLE_IDS = Object.keys(STYLES);
+// 'osm' is the one raster style: standard OpenStreetMap tiles (see tiles.js).
+const STYLE_IDS = [...Object.keys(STYLES), 'osm'];
+const DEFAULT_STYLE = 'bright';
 
 // ---------------------------------------------------------------- tile source
 
@@ -233,11 +237,17 @@ function collectLabels(tiles, z, lang, pdf, project, w, h, scale, C) {
  * @param opts.labelScale  label size multiplier
  * @param opts.measure  (text, size, bold) => width, for label collision boxes
  * @param opts.reserved  [[x0,y0,x1,y1]] boxes labels must avoid (route markers)
- * @returns { background, layers, labels, attribution } or null when no tile loaded
+ * @param opts.scale  raster styles only: output pixels per point
+ * @returns vector { background, halo, layers, labels, attribution } or raster
+ *          { raster: { w, h, rgb }, attribution } — null when no tile loaded
  */
 async function renderBasemap(model, opts = {}) {
   const { view, w, h } = model;
-  const C = STYLES[opts.style] || STYLES.positron;
+  if (opts.style === 'osm') {
+    const img = await raster.renderRaster(view, w, h, opts.scale || 2);
+    return img ? { raster: img, background: '#f2efe9', attribution: raster.ATTRIBUTION } : null;
+  }
+  const C = STYLES[opts.style] || STYLES[DEFAULT_STYLE];
   const viewZoom = Math.log2((view.k * 2 * Math.PI) / 512);
   let z = Math.max(0, Math.min(14, Math.floor(viewZoom + 0.35)));
   let range;
@@ -308,8 +318,9 @@ function spans(ring, w, h) {
   return x0 < w && x1 > 0 && y0 < h && y1 > 0;
 }
 
-/** SVG path data for the tab (keeps the JSON small). */
+/** SVG path data for the tab (keeps the JSON small); raster styles become a PNG data URL. */
 function toSvg(base) {
+  if (base.raster) return { image: 'data:image/png;base64,' + encodePng(base.raster).toString('base64'), background: base.background, attribution: base.attribution };
   const d = (rings, closed) => rings.map((r) => 'M' + r.map(([x, y]) => `${x} ${y}`).join('L') + (closed ? 'Z' : '')).join('');
   return {
     background: base.background,
@@ -320,4 +331,4 @@ function toSvg(base) {
   };
 }
 
-module.exports = { renderBasemap, toSvg, ATTRIBUTION, HOST, STYLE_IDS, STYLES };
+module.exports = { renderBasemap, toSvg, ATTRIBUTION, HOST, STYLE_IDS, STYLES, DEFAULT_STYLE };
