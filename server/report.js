@@ -355,13 +355,14 @@ async function renderPdf(data, opts = {}) {
   y += 52 + 20;
 
   if (data.description) {
-    for (const l of doc.wrap(data.description, W, 9.5).slice(0, 4)) { doc.text(l, M, y, { size: 9.5, color: MUTED }); y += 13; }
+    // The whole intro, wrapped (keeping its line breaks) and continued on the next page if needed.
+    for (const l of doc.wrap(data.description, W, 9.5)) { ensure(13); doc.text(l, M, y, { size: 9.5, color: MUTED }); y += 13; }
     y += 8;
   }
 
   // ---- map
   if (sections.has('map')) {
-    heading(t('mapOverview'));
+    heading(t('mapOverview'), '', 260 + 36); // heading + smallest map + legend, or a new page
     const mh = Math.max(260, Math.min(430, BOTTOM - y - 64));
     const map = buildMap(data, W, mh, { view: fromPreview(views['-1'], W, mh) });
     drawMap(doc, map, M, y);

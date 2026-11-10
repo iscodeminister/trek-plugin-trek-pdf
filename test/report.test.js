@@ -163,3 +163,24 @@ test('report uses the zoom saved in the tab; invalid views are ignored', async (
   const ok = await call(h.ctx, '/report', { tripId: 1, views: { '-1': zoomed, 0: zoomed, bad: zoomed, 1: [1, 2], 2: [99, 0, 5] } });
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
 });
+
+test('a long trip description is printed in full, not cut', async () => {
+  const { loadTrip, renderPdf } = require('../server/report');
+  const fx = structuredClone(fixtures);
+  const sentence = 'Long intro sentence number NN about temples, food and trains across the country. ';
+  fx.trips['1'].data.description = Array.from({ length: 60 }, (_, i) => sentence.replace('NN', i + 1)).join('');
+  const h = createMockHost({ ...fx, grants: GRANTS });
+  const doc = await renderPdf(await loadTrip(h.ctx, 1, {}), { sections: ['map'] });
+  const drawn = [];
+  const orig = doc.wrap.bind(doc);
+  const lines = orig(fx.trips['1'].data.description, doc.width - 84, 9.5);
+  assert.ok(lines.length > 4, 'test needs a multi-line intro');
+  // Every wrapped line's glyph run must appear in some page's content.
+  const all = doc.pages.flat().join('\n');
+  for (const l of [lines[0], lines[Math.floor(lines.length / 2)], lines[lines.length - 1]]) {
+    const hex = doc._runs(l, false).map((r) => r.glyphs.map(([g]) => g.toString(16).padStart(4, '0')).join('')).join('');
+    assert.ok(all.includes(hex), `missing line: ${l}`);
+    drawn.push(l);
+  }
+  assert.strictEqual(drawn.length, 3);
+});
