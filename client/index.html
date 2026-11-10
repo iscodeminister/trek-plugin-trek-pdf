@@ -9,8 +9,8 @@
     html, body { height: 100%; margin: 0; overflow: hidden; }
     body { color: var(--text-primary); }
     .scroller { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-    .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 32px; display: grid; gap: 16px; }
-    .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 20px 16px 32px; display: grid; gap: 16px; transition: opacity .15s; }
+    .wrap.pending { opacity: 0; }
     .head h1 { margin: 2px 0 0; font-size: 22px; line-height: 1.2; }
     .grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
     @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
@@ -21,13 +21,14 @@
     .map { width: 100%; height: auto; display: block; border-radius: var(--r-md, 10px); background: var(--bg-secondary); }
     .map .grid-line { stroke: var(--border-primary); stroke-width: .6; }
     .map .grid-label { fill: var(--text-faint); font-size: 9px; }
+    .map .label { font-size: 10px; font-weight: 600; fill: #111827; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+    .map .base-label { paint-order: stroke; stroke: #ffffff; stroke-linejoin: round; }
     .map .attr { font-size: 9px; fill: #4b5563; }
-    .map .label { font-size: 10px; font-weight: 600; fill: var(--text-primary); paint-order: stroke; stroke: var(--bg-secondary); stroke-width: 3px; }
     .legend { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .legend button { font: inherit; font-size: 12px; color: var(--text-muted); background: transparent; border: 1px solid var(--border-faint, transparent); border-radius: 999px; padding: 4px 10px; cursor: pointer; }
     .legend button:hover { background: var(--bg-hover); color: var(--text-primary); }
     .legend button[aria-pressed="true"] { background: var(--accent-subtle); color: var(--text-primary); border-color: var(--border-primary); }
-    .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+    .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 6px; vertical-align: 1px; }
     .opt { display: flex; align-items: center; gap: 10px; padding: 8px 0; cursor: pointer; font-size: 14px; }
     .opt input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
     .opt small { display: block; color: var(--text-muted); font-size: 12px; }
@@ -44,52 +45,50 @@
 </head>
 <body>
   <div class="scroller">
-  <div class="wrap">
+  <div class="wrap pending" id="wrap">
     <div class="head">
-      <div>
-        <div class="trek-eyebrow">Trip report</div>
-        <h1 id="title">Loading…</h1>
-        <div class="trek-muted" id="dates"></div>
-      </div>
+      <div class="trek-eyebrow" data-i18n="tripReport">Trip report</div>
+      <h1 id="title" data-i18n="loading">Loading…</h1>
+      <div class="trek-muted" id="dates"></div>
     </div>
 
     <div class="stats" id="stats">
-      <div class="trek-card stat"><span class="trek-label">Days</span><b id="s-days">–</b></div>
-      <div class="trek-card stat"><span class="trek-label">Planned stops</span><b id="s-stops">–</b></div>
-      <div class="trek-card stat"><span class="trek-label">Stays</span><b id="s-lodging">–</b></div>
-      <div class="trek-card stat"><span class="trek-label">Total cost</span><b id="s-cost">–</b></div>
+      <div class="trek-card stat"><span class="trek-label" data-i18n="days">Days</span><b id="s-days">–</b></div>
+      <div class="trek-card stat"><span class="trek-label" data-i18n="plannedStops">Planned stops</span><b id="s-stops">–</b></div>
+      <div class="trek-card stat"><span class="trek-label" data-i18n="stays">Stays</span><b id="s-lodging">–</b></div>
+      <div class="trek-card stat"><span class="trek-label" data-i18n="totalCost">Total cost</span><b id="s-cost">–</b></div>
     </div>
 
     <div class="grid">
       <div class="trek-card" style="padding: 14px">
-        <div class="trek-sectionhead" style="margin-bottom: 10px">Map overview</div>
+        <div class="trek-sectionhead" style="margin-bottom: 10px" data-i18n="mapOverview">Map overview</div>
         <div id="map"><div class="trek-skeleton skel"></div></div>
         <div class="legend" id="legend"></div>
       </div>
 
       <div class="trek-stack">
         <div class="trek-card" style="padding: 14px">
-          <div class="trek-sectionhead">Include</div>
-          <label class="opt"><input type="checkbox" name="section" value="map" checked /><span>Map overview<small>Whole trip + a map per day</small></span></label>
-          <label class="opt"><input type="checkbox" name="section" value="itinerary" checked /><span>Itinerary<small>Day by day stops, times and notes</small></span></label>
-          <label class="opt"><input type="checkbox" name="section" value="lodging" checked /><span>Accommodation<small id="lodging-hint">Check-in, check-out, nights</small></span></label>
-          <label class="opt" id="costs-opt"><input type="checkbox" name="section" value="costs" checked /><span>Costs<small id="costs-hint">Totals by category + every expense</small></span></label>
+          <div class="trek-sectionhead" data-i18n="include">Include</div>
+          <label class="opt"><input type="checkbox" name="section" value="map" checked /><span><span data-i18n="mapOverview">Map overview</span><small data-i18n="mapHint">Whole trip + a map per day</small></span></label>
+          <label class="opt"><input type="checkbox" name="section" value="itinerary" checked /><span><span data-i18n="itinerary">Itinerary</span><small data-i18n="itineraryHint">Day by day stops, times and notes</small></span></label>
+          <label class="opt"><input type="checkbox" name="section" value="lodging" checked /><span><span data-i18n="accommodation">Accommodation</span><small id="lodging-hint" data-i18n="accommodationHint">Check-in, check-out, nights</small></span></label>
+          <label class="opt" id="costs-opt"><input type="checkbox" name="section" value="costs" checked /><span><span data-i18n="costs">Costs</span><small id="costs-hint" data-i18n="costsHint">Totals by category + every expense</small></span></label>
 
-          <div class="trek-sectionhead" style="margin: 12px 0 8px">Paper</div>
+          <div class="trek-sectionhead" style="margin: 12px 0 8px" data-i18n="paper">Paper</div>
           <div class="trek-segmented" id="paper">
             <button type="button" data-v="a4" aria-pressed="true">A4</button>
-            <button type="button" data-v="letter" aria-pressed="false">Letter</button>
+            <button type="button" data-v="letter" aria-pressed="false" data-i18n="letter">Letter</button>
           </div>
 
           <div style="margin-top: 16px">
-            <button class="trek-btn trek-btn--primary" id="generate" disabled>Generate PDF</button>
+            <button class="trek-btn trek-btn--primary" id="generate" disabled data-i18n="generate">Generate PDF</button>
           </div>
-          <p class="trek-faint" style="font-size: 12px; margin: 10px 0 0">The PDF is saved to this trip's Files, where everyone on the trip can open or download it.</p>
+          <p class="trek-faint" style="font-size: 12px; margin: 10px 0 0" data-i18n="savedNote">The PDF is saved to this trip’s Files, where everyone on the trip can open or download it.</p>
           <div class="result" id="result" hidden></div>
         </div>
 
         <div class="trek-card" style="padding: 14px" id="costs-card" hidden>
-          <div class="trek-sectionhead" style="margin-bottom: 10px">Costs</div>
+          <div class="trek-sectionhead" style="margin-bottom: 10px" data-i18n="costs">Costs</div>
           <div id="costs"></div>
         </div>
       </div>
@@ -101,8 +100,27 @@
     (function () {
       var $ = function (id) { return document.getElementById(id); };
       var ctx = null, paper = 'a4', loadedFor = null, summary = null, view = -1, basemaps = {};
+      var S = {}, plural = null, LOCALE = 'en-US';
       var COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];
       var NS = 'http://www.w3.org/2000/svg';
+
+      // ---- i18n: strings come from the server (one table shared with the PDF).
+      function t(key, vars) {
+        var s = S[key] != null ? S[key] : key;
+        return String(s).replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] != null ? vars[k] : m; });
+      }
+      function tn(key, n) {
+        var forms = S[key] || {}, cat = plural ? plural.select(n) : 'other';
+        return String(forms[cat] || forms.other || '{n}').replace('{n}', n.toLocaleString(LOCALE));
+      }
+      function applyI18n(b) {
+        S = b.strings; LOCALE = b.locale;
+        try { plural = new Intl.PluralRules(LOCALE); } catch (e) { plural = null; }
+        document.documentElement.lang = b.lang;
+        document.documentElement.dir = b.dir;
+        document.querySelectorAll('[data-i18n]').forEach(function (el) { el.textContent = t(el.getAttribute('data-i18n')); });
+      }
+      function reveal() { $('wrap').classList.remove('pending'); }
 
       function el(tag, attrs, parent) {
         var e = document.createElementNS(NS, tag);
@@ -112,60 +130,77 @@
       }
       function opts() {
         var f = (ctx && ctx.formats) || {};
-        return { tripId: ctx && ctx.tripId, locale: f.locale || ctx && ctx.locale || 'en', currency: f.currency, timeZone: f.timezone };
+        return { tripId: ctx && ctx.tripId, lang: (ctx && ctx.locale) || f.locale || 'en', locale: f.locale, currency: f.currency, timeZone: f.timezone };
       }
       function unwrap(data) {
         if (data && data.error) throw new Error(data.error);
         return data;
       }
 
-      // Tile background from the server (cached per view); null = vector only.
+      // Vector basemap from the server (cached per view); null = graticule only.
       function basemap(v) {
         if (!summary || !summary.basemap) return Promise.resolve(null);
         if (!(v in basemaps)) {
-          basemaps[v] = trek.invoke('/basemap', { method: 'POST', body: { tripId: ctx.tripId, view: v, scale: Math.min(2, window.devicePixelRatio || 1) } })
-            .then(unwrap).then(function (r) { return r && r.image ? r : null; })
+          var body = opts(); body.view = v;
+          basemaps[v] = trek.invoke('/basemap', { method: 'POST', body: body })
+            .then(unwrap).then(function (r) { return r && r.basemap ? r.basemap : null; })
             .catch(function () { delete basemaps[v]; return null; });
         }
         return basemaps[v];
+      }
+
+      function paintBasemap(g, b, m) {
+        g.textContent = '';
+        el('rect', { x: 0, y: 0, width: m.w, height: m.h, fill: b.background }, g);
+        b.layers.forEach(function (l) {
+          if (l.kind === 'fill') el('path', { d: l.d, fill: l.color }, g);
+          else {
+            var a = { d: l.d, fill: 'none', stroke: l.color, 'stroke-width': l.width, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+            if (l.dash) a['stroke-dasharray'] = l.dash.join(' ');
+            el('path', a, g);
+          }
+        });
+        b.labels.forEach(function (l) {
+          el('text', { x: l.x, y: l.y, 'text-anchor': 'middle', 'font-size': l.size, 'font-weight': l.bold ? 700 : 400, fill: l.color, class: 'base-label', 'stroke-width': l.size * 0.32 }, g).textContent = l.text;
+        });
+        var tw = b.attribution.length * 4.7 + 8;
+        el('rect', { x: 0, y: m.h - 14, width: tw, height: 14, fill: '#ffffff', opacity: 0.85 }, g);
+        el('text', { x: 4, y: m.h - 4, class: 'attr' }, g).textContent = b.attribution;
       }
 
       function drawMap(m, v) {
         var box = $('map');
         box.textContent = '';
         if (m.empty) {
-          box.innerHTML = '<div class="empty">No places with coordinates yet.<br>Add places to your days to see the route here.</div>';
+          var d = document.createElement('div');
+          d.className = 'empty';
+          d.textContent = t('noCoords');
+          box.appendChild(d);
           return;
         }
-        var svg = el('svg', { viewBox: '0 0 ' + m.w + ' ' + m.h, class: 'map', role: 'img', 'aria-label': 'Trip route map' }, box);
+        var svg = el('svg', { viewBox: '0 0 ' + m.w + ' ' + m.h, class: 'map', role: 'img', 'aria-label': t('mapOverview'), direction: 'ltr' }, box);
         var under = el('g', {}, svg);
         m.grid.forEach(function (g) {
           el('line', { x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2, class: 'grid-line' }, under);
           if (g.label && g.lx < m.w - 28 && g.ly > 10) el('text', { x: g.lx, y: g.ly, class: 'grid-label' }, under).textContent = g.label;
         });
         basemap(v).then(function (b) {
-          if (!b || view !== v || !under.isConnected) return;
-          under.textContent = '';
-          el('image', { href: b.image, x: 0, y: 0, width: m.w, height: m.h, preserveAspectRatio: 'none' }, under);
-          var tw = b.attribution.length * 4.6 + 8;
-          el('rect', { x: 0, y: m.h - 14, width: tw, height: 14, fill: '#ffffff', opacity: 0.85 }, under);
-          el('text', { x: 4, y: m.h - 4, class: 'attr' }, under).textContent = b.attribution;
+          if (b && view === v && under.isConnected) paintBasemap(under, b, m);
         });
         (m.links || []).forEach(function (l) {
-          el('polyline', { points: l.map(function (p) { return p.join(','); }).join(' '), fill: 'none', stroke: 'var(--text-faint)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, svg);
+          el('polyline', { points: l.map(function (p) { return p.join(','); }).join(' '), fill: 'none', stroke: '#64748b', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }, svg);
         });
         m.routes.forEach(function (r) {
           var pts = r.points.map(function (p) { return p.join(','); }).join(' ');
-          el('polyline', { points: pts, fill: 'none', stroke: 'var(--bg-secondary)', 'stroke-width': 6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+          el('polyline', { points: pts, fill: 'none', stroke: '#ffffff', 'stroke-width': 6, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
           el('polyline', { points: pts, fill: 'none', stroke: r.color, 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
         });
         m.markers.forEach(function (k) {
           var g = el('g', {}, svg);
-          var t = el('title', {}, g); t.textContent = (k.day ? 'Day ' + k.day + ' · ' : 'Not scheduled · ') + k.label;
+          el('title', {}, g).textContent = (k.day ? t('dayN', { n: k.day }) : t('notScheduled')) + ' · ' + k.label;
           if (k.n === null) { el('circle', { cx: k.x, cy: k.y, r: 4.5, fill: k.color, stroke: '#fff', 'stroke-width': 1.5 }, g); return; }
           el('circle', { cx: k.x, cy: k.y, r: 9, fill: k.color, stroke: '#fff', 'stroke-width': 2 }, g);
-          var n = el('text', { x: k.x, y: k.y + 3.5, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700, fill: '#fff' }, g);
-          n.textContent = k.n;
+          el('text', { x: k.x, y: k.y + 3.5, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 700, fill: '#fff' }, g).textContent = k.n;
         });
         if (m.showLabels) {
           var boxes = [];
@@ -178,22 +213,41 @@
         }
         if (m.scale) {
           var sx = m.w - m.scale.len - 14, sy = m.h - 12;
-          // Fixed light chip: readable on the tile background in both themes.
           el('rect', { x: sx - 6, y: sy - 18, width: m.scale.len + 12, height: 23, rx: 4, fill: '#ffffff', opacity: 0.9 }, svg);
           el('polyline', { points: [sx, sy - 4, sx, sy, sx + m.scale.len, sy, sx + m.scale.len, sy - 4].join(' '), fill: 'none', stroke: '#111827', 'stroke-width': 1.5 }, svg);
           el('text', { x: sx + m.scale.len / 2, y: sy - 6, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 600, fill: '#111827' }, svg).textContent = m.scale.label;
         }
       }
 
+      // Legend doubles as a day picker: "All days" or zoom into one day's own map.
+      function showView(v) {
+        view = v;
+        var m = v < 0 ? summary.map : (summary.dayMaps && summary.dayMaps[v]) || summary.map;
+        drawMap(m, v);
+        var lg = $('legend');
+        lg.textContent = '';
+        var items = [{ label: t('allDays'), color: null, v: -1 }].concat(summary.map.legend.map(function (l, i) { return { label: l.label + ' (' + l.count + ')', color: l.color, v: i }; }));
+        items.forEach(function (it) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.setAttribute('aria-pressed', String(it.v === view));
+          if (it.color) { var dot = document.createElement('i'); dot.style.background = it.color; b.appendChild(dot); }
+          b.appendChild(document.createTextNode(it.label));
+          b.addEventListener('click', function () { showView(it.v); });
+          lg.appendChild(b);
+        });
+      }
+
       function render(s) {
+        applyI18n(s.i18n);
+        summary = s;
         $('title').textContent = s.title;
-        $('dates').textContent = [s.dateRange, s.duration ? s.duration + ' day' + (s.duration === 1 ? '' : 's') : ''].filter(Boolean).join(' · ') || 'No dates set';
-        $('s-days').textContent = s.days;
-        $('s-stops').textContent = s.stops + (s.unscheduled ? ' (+' + s.unscheduled + ')' : '');
-        $('s-lodging').textContent = s.lodging;
+        $('dates').textContent = [s.dateRange, s.duration ? tn('nDays', s.duration) : ''].filter(Boolean).join(' · ') || t('noDates');
+        $('s-days').textContent = s.days.toLocaleString(LOCALE);
+        $('s-stops').textContent = s.stops.toLocaleString(LOCALE) + (s.unscheduled ? ' (+' + s.unscheduled.toLocaleString(LOCALE) + ')' : '');
+        $('s-lodging').textContent = s.lodging.toLocaleString(LOCALE);
         $('s-cost').textContent = s.costs && s.costs.length ? s.costs[0].formatted + (s.costs.length > 1 ? ' +' : '') : '—';
         $('s-cost').title = s.costs ? s.costs.map(function (c) { return c.formatted; }).join(' + ') : '';
-        summary = s;
         if (view >= s.days) view = -1;
         showView(view);
 
@@ -201,15 +255,15 @@
         var costOpt = $('costs-opt'), costBox = $('costs');
         costOpt.querySelector('input').disabled = !s.costsEnabled;
         costOpt.setAttribute('aria-disabled', String(!s.costsEnabled));
-        $('costs-hint').textContent = s.costsEnabled ? (s.costItems ? s.costItems + ' expenses, totals by category' : 'No expenses recorded yet') : 'Costs addon is off for this trip';
-        $('lodging-hint').textContent = s.lodging ? s.lodging + ' stay' + (s.lodging === 1 ? '' : 's') : 'No accommodation added yet';
+        $('costs-hint').textContent = s.costsEnabled ? (s.costItems ? tn('nExpenses', s.costItems) : t('noExpenses')) : t('costsOff');
+        $('lodging-hint').textContent = s.lodging ? tn('nStays', s.lodging) : t('noLodging');
         costBox.textContent = '';
         $('costs-card').hidden = !(s.costs && s.costs.length);
         (s.costs || []).forEach(function (g, gi) {
           var head = document.createElement('div');
           head.className = 'cat';
           head.innerHTML = '<strong></strong><strong></strong>';
-          head.children[0].textContent = s.costs.length > 1 ? 'Total ' + g.currency : 'Total';
+          head.children[0].textContent = s.costs.length > 1 ? t('totalCur', { cur: g.currency }) : t('total');
           head.children[1].textContent = g.formatted;
           head.style.marginBottom = '8px';
           if (gi) head.style.marginTop = '8px';
@@ -228,39 +282,22 @@
           });
         });
         $('generate').disabled = false;
-      }
-
-      // Legend doubles as a day picker: "All days" or zoom into one day's own map.
-      function showView(v) {
-        view = v;
-        var m = v < 0 ? summary.map : (summary.dayMaps && summary.dayMaps[v]) || summary.map;
-        drawMap(m, v);
-        var lg = $('legend');
-        lg.textContent = '';
-        var items = [{ label: 'All days', color: null, v: -1 }].concat(summary.map.legend.map(function (l, i) { return { label: l.label + ' (' + l.count + ')', color: l.color, v: i }; }));
-        items.forEach(function (it) {
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.setAttribute('aria-pressed', String(it.v === view));
-          if (it.color) { var dot = document.createElement('i'); dot.style.background = it.color; b.appendChild(dot); }
-          b.appendChild(document.createTextNode(it.label));
-          b.addEventListener('click', function () { showView(it.v); });
-          lg.appendChild(b);
-        });
+        reveal();
       }
 
       function load() {
         var o = opts();
-        if (!o.tripId) { $('title').textContent = 'Open a trip to build its report'; return; }
+        if (!o.tripId) { $('title').textContent = t('openTrip'); reveal(); return; }
         var key = JSON.stringify(o);
         if (key === loadedFor) return;
         loadedFor = key;
         basemaps = {};
         trek.invoke('/summary', { method: 'POST', body: o }).then(unwrap).then(render).catch(function (e) {
           loadedFor = null;
-          $('title').textContent = 'Could not load this trip';
-          $('map').innerHTML = '<div class="empty"></div>';
-          $('map').firstChild.textContent = e.message;
+          $('title').textContent = t('couldNotLoad');
+          $('map').textContent = '';
+          var d = document.createElement('div'); d.className = 'empty'; d.textContent = e.message; $('map').appendChild(d);
+          reveal();
           trek.notify('error', e.message);
         });
       }
@@ -274,22 +311,24 @@
 
       $('generate').addEventListener('click', function () {
         var sections = Array.prototype.filter.call(document.querySelectorAll('input[name=section]'), function (i) { return i.checked && !i.disabled; }).map(function (i) { return i.value; });
-        if (!sections.length) { trek.notify('warning', 'Pick at least one section'); return; }
+        if (!sections.length) { trek.notify('warning', t('pickSection')); return; }
         var btn = $('generate'), res = $('result');
-        btn.disabled = true; btn.textContent = 'Generating…'; res.hidden = true;
+        btn.disabled = true; btn.textContent = t('generating'); res.hidden = true;
         var body = opts(); body.sections = sections; body.paper = paper;
         trek.invoke('/report', { method: 'POST', body: body }).then(unwrap).then(function (r) {
           var kb = Math.max(1, Math.round(r.file.size / 1024));
           res.hidden = false;
-          res.textContent = 'Saved “' + r.file.name + '” (' + kb + ' KB) to this trip’s Files.';
-          trek.notify('success', 'Trip report saved to Files');
+          res.textContent = t('savedTo', { name: r.file.name, kb: kb.toLocaleString(LOCALE) });
+          trek.notify('success', t('savedToast'));
         }).catch(function (e) {
           res.hidden = false;
-          res.textContent = 'Could not create the PDF: ' + e.message;
+          res.textContent = t('couldNotCreate', { msg: e.message });
           trek.notify('error', e.message);
-        }).then(function () { btn.disabled = false; btn.textContent = 'Generate PDF'; });
+        }).then(function () { btn.disabled = false; btn.textContent = t('generate'); });
       });
 
+      // Never stay invisible if the host is slow to send a context.
+      setTimeout(reveal, 3000);
       trek.onContext(function (c) { ctx = c; load(); });
     })();
   </script>

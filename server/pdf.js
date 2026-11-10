@@ -1,6 +1,7 @@
 'use strict';
-// Minimal PDF writer: embedded Noto Sans SC (subset per document, Type0/Identity-H with
-// a ToUnicode map so text stays searchable), vector shapes, RGB images, multi-page.
+// Minimal PDF writer: embedded Noto Sans SC / KR / Thai with per-character fallback
+// (subset per document, Type0/Identity-H with a ToUnicode map so text stays searchable),
+// vector shapes and paths, multi-page.
 const zlib = require('zlib');
 const { fonts } = require('./font');
 
@@ -29,12 +30,15 @@ class PdfDoc {
     this.title = opts.title || 'Document';
     this.pages = [];
     this.ops = null;
-    this.images = [];
-    const f = fonts();
-    this.fonts = [
-      { key: 'F1', tag: 'TRKPDR', font: f.regular, used: new Map() },
-      { key: 'F2', tag: 'TRKPDB', font: f.bold, used: new Map() },
-    ];
+    // One PDF font resource per distinct font file; families pick regular/bold faces.
+    this.faces = [];
+    const face = (font) => {
+      if (!font) return null;
+      const f = { key: `F${this.faces.length + 1}`, tag: `TRKPD${'ABCDEFGHIJ'[this.faces.length]}`, font, used: new Map() };
+      this.faces.push(f);
+      return f;
+    };
+    this.families = fonts().map((fam) => ({ regular: face(fam.regular), bold: face(fam.bold) }));
   }
 
   addPage() {
@@ -104,46 +108,73 @@ class PdfDoc {
     return this;
   }
 
-  /** Register an RGB raster; returns ops that paint it into the box (top-left origin). */
-  imageOps(raster, x, y, w, h) {
-    const name = `Im${this.images.length + 1}`;
-    this.images.push({ name, raster });
-    return ['q', `${n(w)} 0 0 ${n(h)} ${n(x)} ${n(this.Y(y + h))} cm`, `/${name} Do`, 'Q'];
-  }
-
-  _font(bold) { return this.fonts[bold ? 1 : 0]; }
-
-  /** True when the bundled font has a glyph for every character of `str`. */
-  covers(str) {
-    const f = this.fonts[0].font;
-    for (const ch of String(str ?? '')) if (!/\s/.test(ch) && !f.has(ch.codePointAt(0))) return false;
-    return true;
+  /** Split text into runs of one face each: the first family with a glyph wins. */
+  _runs(str, bold) {
+    const runs = [];
+    for (const ch of String(str ?? '')) {
+      const cp = ch.codePointAt(0);
+      const fam = (/\s/.test(ch) && runs.length ? null : this.families.find((f) => f.regular.font.has(cp))) || null;
+      let face, synth = false;
+      if (!fam) {
+        const prev = runs[runs.length - 1];
+        if (prev && prev.face.font.has(cp)) { face = prev.face; synth = prev.synth; } // keep spaces in the current run
+        else { face = bold ? this.families[0].bold : this.families[0].regular; }
+      } else if (bold && !fam.bold) { face = fam.regular; synth = true; }
+      else face = bold ? fam.bold : fam.regular;
+      const gid = face.font.gid(cp);
+      const last = runs[runs.length - 1];
+      if (last && last.face === face && last.synth === synth) last.glyphs.push([gid, cp]);
+      else runs.push({ face, synth, glyphs: [[gid, cp]] });
+    }
+    return runs;
   }
 
   measure(str, size = 10, bold = false) {
-    const { font } = this._font(bold);
     let w = 0;
-    for (const ch of String(str ?? '')) w += font.advance(font.gid(ch.codePointAt(0)));
+    for (const r of this._runs(str, bold)) for (const [gid] of r.glyphs) w += r.face.font.advance(gid);
     return (w * size) / 1000;
   }
 
-  /** Draw text with its BASELINE at y. align: left | center | right (x is the anchor). */
-  text(str, x, y, { size = 10, bold = false, color = '#111827', align = 'left' } = {}) {
+  /**
+   * Draw text with its BASELINE at y. align: left | center | right (x is the anchor).
+   * halo: a colour stroked behind the glyphs (map labels).
+   */
+  text(str, x, y, { size = 10, bold = false, color = '#111827', align = 'left', halo = null, haloWidth = 2.2 } = {}) {
     const s = String(str ?? '').replace(/[\r\n\t]+/g, ' ');
     if (!s) return this;
-    const f = this._font(bold);
-    let hex = '';
-    for (const ch of s) {
-      const cp = ch.codePointAt(0), gid = f.font.gid(cp);
-      if (gid && !f.used.has(gid)) f.used.set(gid, cp);
-      hex += gid.toString(16).padStart(4, '0');
-    }
+    const runs = this._runs(s, bold);
     let tx = x;
     if (align !== 'left') {
       const w = this.measure(s, size, bold);
       tx = align === 'center' ? x - w / 2 : x - w;
     }
-    this.ops.push(`BT /${f.key} ${n(size)} Tf ${rgb(color)} rg ${n(tx)} ${n(this.Y(y))} Td <${hex}> Tj ET`);
+    const body = (mode) => runs.map((r) => {
+      let hex = '';
+      for (const [gid, cp] of r.glyphs) {
+        if (gid && !r.face.used.has(gid)) r.face.used.set(gid, cp);
+        hex += gid.toString(16).padStart(4, '0');
+      }
+      const tr = mode === 'halo' ? '1 Tr' : r.synth ? `2 Tr ${n(size * 0.045)} w` : '0 Tr';
+      return `/${r.face.key} ${n(size)} Tf ${tr} <${hex}> Tj`;
+    }).join(' ');
+    const at = `1 0 0 1 ${n(tx)} ${n(this.Y(y))} Tm`;
+    if (halo) this.ops.push(`q 1 j ${n(haloWidth)} w ${rgb(halo)} RG BT ${at} ${body('halo')} ET Q`);
+    this.ops.push(`q ${rgb(color)} rg ${rgb(color)} RG BT ${at} ${body('fill')} ET Q`);
+    return this;
+  }
+
+  /** Paths in top-left coordinates. closed rings are filled/clipped; open ones stroked. */
+  path(rings, mode = 'fill') {
+    const parts = [];
+    for (const ring of rings) {
+      if (ring.length < 2) continue;
+      parts.push(`${n(ring[0][0])} ${n(this.Y(ring[0][1]))} m`);
+      for (let i = 1; i < ring.length; i++) parts.push(`${n(ring[i][0])} ${n(this.Y(ring[i][1]))} l`);
+      if (mode !== 'stroke') parts.push('h');
+    }
+    if (!parts.length) return this;
+    this.ops.push(parts.join(' '));
+    this._paint(mode);
     return this;
   }
 
@@ -188,14 +219,14 @@ class PdfDoc {
 
     // Fonts: subset each face to the glyphs this document drew.
     const fontRefs = {};
-    for (const f of this.fonts) {
+    for (const f of this.faces) {
       if (!f.used.size) continue;
       const gids = [...f.used.keys()].sort((a, b) => a - b);
       const sub = f.font.subset(gids);
       const base = `${f.tag}+${f.font.name}`;
       const scale = 1000 / f.font.unitsPerEm;
       const file = add(stream(`/Length1 ${sub.length}`, sub));
-      const desc = add(`<< /Type /FontDescriptor /FontName /${base} /Flags 4 /FontBBox [${f.font.bbox.map((v) => Math.round(v * scale)).join(' ')}] /ItalicAngle 0 /Ascent ${Math.round(f.font.ascent * scale)} /Descent ${Math.round(f.font.descent * scale)} /CapHeight ${Math.round(f.font.ascent * scale * 0.73)} /StemV ${f.key === 'F2' ? 140 : 80} /FontFile2 ${file} 0 R >>`);
+      const desc = add(`<< /Type /FontDescriptor /FontName /${base} /Flags 4 /FontBBox [${f.font.bbox.map((v) => Math.round(v * scale)).join(' ')}] /ItalicAngle 0 /Ascent ${Math.round(f.font.ascent * scale)} /Descent ${Math.round(f.font.descent * scale)} /CapHeight ${Math.round(f.font.ascent * scale * 0.73)} /StemV ${/Bold/.test(f.font.name) ? 140 : 80} /FontFile2 ${file} 0 R >>`);
       const widths = gids.map((g) => `${g} [${f.font.advance(g)}]`).join(' ');
       const cid = add(`<< /Type /Font /Subtype /CIDFontType2 /BaseFont /${base} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor ${desc} 0 R /DW 1000 /W [${widths}] /CIDToGIDMap /Identity >>`);
       const entries = gids.map((g) => `<${g.toString(16).padStart(4, '0')}> <${utf16hex(f.used.get(g))}>`);
@@ -208,13 +239,8 @@ class PdfDoc {
       const toUni = add(stream('', Buffer.from(cmap, 'latin1')));
       fontRefs[f.key] = add(`<< /Type /Font /Subtype /Type0 /BaseFont /${base} /Encoding /Identity-H /DescendantFonts [${cid} 0 R] /ToUnicode ${toUni} 0 R >>`);
     }
-    const imgRefs = {};
-    for (const im of this.images) {
-      imgRefs[im.name] = add(stream(`/Type /XObject /Subtype /Image /Width ${im.raster.w} /Height ${im.raster.h} /ColorSpace /DeviceRGB /BitsPerComponent 8`, im.raster.rgb));
-    }
     const fontDict = Object.entries(fontRefs).map(([k, r]) => `/${k} ${r} 0 R`).join(' ');
-    const xobjDict = Object.entries(imgRefs).map(([k, r]) => `/${k} ${r} 0 R`).join(' ');
-    const resources = `<< /Font << ${fontDict} >>${xobjDict ? ` /XObject << ${xobjDict} >>` : ''} >>`;
+    const resources = `<< /Font << ${fontDict} >> >>`;
 
     const kids = [];
     for (const ops of this.pages) {

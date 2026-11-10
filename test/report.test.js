@@ -42,9 +42,10 @@ test('report renders a well-formed PDF and saves it to trip files', async () => 
 
   // Re-render to inspect the bytes (the mock doesn't keep content).
   const { loadTrip, renderPdf } = require('../server/report');
-  const { renderBasemap } = require('../server/tiles');
-  const basemap = process.env.NET ? (m, scale) => renderBasemap(m.view, m.w, m.h, scale) : null;
-  const buf = (await renderPdf(await loadTrip(h.ctx, 1, { locale: 'en', timeZone: 'Asia/Tokyo' }), { basemap })).toBuffer();
+  const { renderBasemap } = require('../server/basemap');
+  const lang = process.env.LANG_OUT || 'en';
+  const basemap = process.env.NET ? (m, o) => renderBasemap(m, { ...o, lang, pdf: true }) : null;
+  const buf = (await renderPdf(await loadTrip(h.ctx, 1, { lang, locale: require('../server/i18n').intlLocale(lang), timeZone: 'Asia/Tokyo' }), { basemap })).toBuffer();
   const pdf = buf.toString('latin1');
   assert.ok(pdf.startsWith('%PDF-1.5'));
   // Every xref offset must point at its "N 0 obj" header.
@@ -83,13 +84,18 @@ test('CJK, Cyrillic and accented text is embedded, not replaced by ?', async () 
   const { PdfDoc } = require('../server/pdf');
   const doc = new PdfDoc();
   doc.addPage();
-  const s = '東京タワー · 北京烤鸭 · Москва · Zürich';
+  const s = '東京タワー · 北京烤鸭 · Москва · Zürich · 서울 · กรุงเทพฯ';
   doc.text(s, 40, 40);
-  for (const ch of s.replace(/[\s·]/g, '')) {
-    const gid = doc.fonts[0].font.gid(ch.codePointAt(0));
-    assert.ok(gid > 0, `no glyph for ${ch}`);
-    assert.strictEqual(doc.fonts[0].used.get(gid), ch.codePointAt(0));
+  doc.text(s, 40, 60, { bold: true }); // Korean bold is synthesised from the regular face
+  for (const bold of [false, true]) {
+    for (const r of doc._runs(s, bold)) for (const [gid, cp] of r.glyphs) {
+      if (/\s/.test(String.fromCodePoint(cp))) continue;
+      assert.ok(gid > 0, `no glyph for ${String.fromCodePoint(cp)}`);
+      assert.strictEqual(r.face.used.get(gid), cp);
+    }
   }
+  const faces = doc.faces.filter((f) => f.used.size).map((f) => f.font.name);
+  assert.ok(faces.includes('NotoSansKR-Regular') && faces.includes('NotoSansThai-Regular') && faces.includes('NotoSansSC-Bold'), faces.join());
   // CJK wraps between characters even without spaces.
   const lines = doc.wrap('富士山に登るなら早朝出発がおすすめです。山頂まで約六時間かかります。', 120, 10);
   assert.ok(lines.length > 1 && lines.every((l) => doc.measure(l, 10) <= 120));
@@ -98,10 +104,31 @@ test('CJK, Cyrillic and accented text is embedded, not replaced by ?', async () 
   assert.match(pdf, /\/FontFile2 \d+ 0 R/);
 });
 
-test('PNG codec round-trips', () => {
-  const { encodePng, decodePng } = require('../server/png');
-  const rgb = Buffer.alloc(7 * 5 * 3).map((_, i) => (i * 37) & 255);
-  const back = decodePng(encodePng({ w: 7, h: 5, rgb }));
-  assert.deepStrictEqual([back.w, back.h], [7, 5]);
-  assert.ok(back.rgb.equals(rgb));
+test('language codes from the host normalise to TREK codes', () => {
+  const { normalizeLang } = require('../server/i18n');
+  assert.deepStrictEqual(['de', 'de-AT', 'zh-CN', 'zh-TW', 'zh-Hant', 'pt-BR', 'br', 'el', 'gr', 'xx', '', 'ko_KR'].map(normalizeLang),
+    ['de', 'de', 'zh', 'zh-TW', 'zh-TW', 'br', 'br', 'gr', 'gr', 'en', 'en', 'ko']);
+});
+
+test('summary and report follow the UI language (PDF falls back to English for ar/he)', async () => {
+  const sum = await call(host().ctx, '/summary', { tripId: 1, lang: 'de', locale: 'de-DE' });
+  assert.strictEqual(sum.body.i18n.lang, 'de');
+  assert.strictEqual(sum.body.i18n.strings.generate, 'PDF erstellen');
+  assert.strictEqual(sum.body.map.legend[0].label.startsWith('Tag 1'), true);
+  const ar = await call(host().ctx, '/summary', { tripId: 1, lang: 'ar' });
+  assert.strictEqual(ar.body.i18n.dir, 'rtl');
+  assert.strictEqual(ar.body.i18n.pdfInEnglish, true);
+
+  const h = host({ grants: [...GRANTS, 'db:read:files'] });
+  for (const [lang, word] of [['de', 'Reisebericht'], ['ja', '旅行レポート'], ['ar', 'Trip report'], ['ko', '여행 보고서']]) {
+    const r = await call(h.ctx, '/report', { tripId: 1, lang });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.body));
+    assert.ok(r.body.file.name.includes(word), `${lang}: ${r.body.file.name}`);
+  }
+});
+
+test('basemap route returns null when the background is turned off', async () => {
+  const { status, body } = await call(host().ctx, '/basemap', { tripId: 1, view: 0 });
+  assert.strictEqual(status, 200);
+  assert.strictEqual(body.basemap, null);
 });

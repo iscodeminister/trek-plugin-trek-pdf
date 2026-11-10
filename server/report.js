@@ -1,7 +1,8 @@
 'use strict';
 const { PdfDoc } = require('./pdf');
-const { fonts } = require('./font');
-const { ATTRIBUTION } = require('./tiles');
+const { covers: fontCovers } = require('./font');
+const { ATTRIBUTION } = require('./basemap');
+const { translator } = require('./i18n');
 
 const DAY_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];
 const INK = '#111827', MUTED = '#6b7280', FAINT = '#9ca3af', LINE = '#e5e7eb', SOFT = '#f3f4f6', BRAND = '#0f172a', ACCENT = '#2563eb';
@@ -28,12 +29,8 @@ function fmtDate(d, locale, opts) {
   try { return new Intl.DateTimeFormat(locale, { timeZone: 'UTC', ...opts }).format(t); } catch { return t.toISOString().slice(0, 10); }
 }
 
-/** True when the bundled font can draw every character (e.g. no ₹ → fall back to the code). */
-function covers(str) {
-  const f = fonts().regular;
-  for (const ch of String(str)) if (!/\s/.test(ch) && !f.has(ch.codePointAt(0))) return false;
-  return true;
-}
+// The bundled fonts can't draw every currency symbol (₹, ₪…) → fall back to the code.
+const covers = fontCovers;
 
 function fmtMoney(amount, currency, locale) {
   const cur = String(currency || '').toUpperCase();
@@ -60,7 +57,12 @@ function validCoord(lat, lng) {
 // ---------------------------------------------------------------- data
 
 /** Load and normalize everything the report needs. Must run inside a route handler. */
-async function loadTrip(ctx, tripId, { locale = 'en', currency, timeZone } = {}) {
+/**
+ * @param opts.lang   TREK language code for all generated wording (see i18n.js)
+ * @param opts.locale BCP-47 locale for dates and numbers
+ */
+async function loadTrip(ctx, tripId, { lang = 'en', locale = 'en-US', currency, timeZone } = {}) {
+  const t = translator(lang);
   const trip = await ctx.trips.getById(tripId);
   if (!trip) {
     const e = new Error('Trip not found');
@@ -81,7 +83,7 @@ async function loadTrip(ctx, tripId, { locale = 'en', currency, timeZone } = {})
     if (p.id !== undefined) used.add(String(p.id));
     const cat = p.category && typeof p.category === 'object' ? p.category : null;
     return {
-      name: str(p.name, a.name) || 'Untitled place',
+      name: str(p.name, a.name) || t('untitledPlace'),
       lat: num(p.lat ?? p.latitude),
       lng: num(p.lng ?? p.lon ?? p.longitude),
       time: fmtTime(str(a.place_time, p.place_time, a.start_time, a.time)),
@@ -116,7 +118,7 @@ async function loadTrip(ctx, tripId, { locale = 'en', currency, timeZone } = {})
 
   const unscheduled = (places || [])
     .filter((p) => !used.has(String(p.id)))
-    .map((p) => ({ name: str(p.name) || 'Untitled place', lat: num(p.lat), lng: num(p.lng) }));
+    .map((p) => ({ name: str(p.name) || t('untitledPlace'), lat: num(p.lat), lng: num(p.lng) }));
 
   const dayById = new Map(days.map((d) => [String(d.id), d]));
   const lodging = (Array.isArray(rawAccs) ? rawAccs : []).map((a) => {
@@ -126,7 +128,7 @@ async function loadTrip(ctx, tripId, { locale = 'en', currency, timeZone } = {})
     const nights = start && end && parseDate(start.date) && parseDate(end.date)
       ? Math.max(0, Math.round((parseDate(end.date) - parseDate(start.date)) / 86400000)) : null;
     return {
-      name: str(a.place_name, a.name, p.name) || 'Accommodation',
+      name: str(a.place_name, a.name, p.name) || t('accommodation'),
       from: start ? start.label : fmtDate(str(a.check_in_date, a.start_date), locale, { day: 'numeric', month: 'short' }),
       to: end ? end.label : fmtDate(str(a.check_out_date, a.end_date), locale, { day: 'numeric', month: 'short' }),
       checkIn: fmtTime(str(a.check_in, a.check_in_time)),
@@ -137,8 +139,8 @@ async function loadTrip(ctx, tripId, { locale = 'en', currency, timeZone } = {})
 
   const baseCurrency = str(trip.currency, currency) || 'EUR';
   const costs = rawCosts === null ? null : (Array.isArray(rawCosts) ? rawCosts : []).map((c) => ({
-    name: str(c.name) || 'Expense',
-    category: str(c.category, c.category_name) || 'Other',
+    name: str(c.name) || t('expense'),
+    category: str(c.category, c.category_name) || t('other'),
     amount: Number(c.total_price) || 0,
     currency: (str(c.currency) || baseCurrency).toUpperCase(),
     persons: num(c.persons) > 0 ? num(c.persons) : null,
@@ -156,7 +158,9 @@ async function loadTrip(ctx, tripId, { locale = 'en', currency, timeZone } = {})
 
   return {
     id: trip.id,
-    title: str(trip.title, trip.name) || 'Trip',
+    title: str(trip.title, trip.name) || t('trip'),
+    t,
+    lang,
     description: str(trip.description),
     dateRange,
     duration,
@@ -206,7 +210,8 @@ function buildMap(data, w, h, opts = {}) {
   const pts = [];
   for (const d of data.days) for (const s of d.stops) if (validCoord(s.lat, s.lng)) pts.push(s);
   for (const s of data.unscheduled) if (validCoord(s.lat, s.lng)) pts.push(s);
-  const legend = data.days.map((d) => ({ color: d.color, label: `Day ${d.index + 1}${d.label ? ' · ' + d.label : ''}`, count: d.stops.length }));
+  const t = data.t || translator('en');
+  const legend = data.days.map((d) => ({ color: d.color, label: `${t('dayN', { n: d.index + 1 })}${d.label ? ' · ' + d.label : ''}`, count: d.stops.length }));
   if (!pts.length) return { w, h, empty: true, routes: [], markers: [], grid: [], scale: null, legend };
 
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
@@ -274,12 +279,16 @@ function buildMap(data, w, h, opts = {}) {
 const SECTIONS = ['map', 'itinerary', 'lodging', 'costs'];
 
 /**
- * @param opts.basemap  async (mapModel, scale) => raster|null — supplies the tile background;
- *                      omitted → vector-only maps with a graticule.
+ * @param opts.basemap  async (mapModel, { labelScale, measure, reserved }) => basemap|null —
+ *                      vector background (see basemap.js); omitted → graticule only.
  */
 async function renderPdf(data, opts = {}) {
   const sections = new Set((opts.sections || SECTIONS).filter((s) => SECTIONS.includes(s)));
-  const doc = new PdfDoc({ size: opts.paper === 'letter' ? 'letter' : 'a4', title: `${data.title} – Trip report` });
+  const t = data.t;
+  const upper = (v) => v.toLocaleUpperCase(data.locale);
+  const doc = new PdfDoc({ size: opts.paper === 'letter' ? 'letter' : 'a4', title: `${data.title} – ${t('tripReport')}` });
+  doc.t = t;
+  doc.upper = upper;
   const M = 42, W = doc.width - 2 * M, BOTTOM = doc.height - 48;
   let y = 0;
 
@@ -287,7 +296,7 @@ async function renderPdf(data, opts = {}) {
     doc.addPage();
     doc.fill(BRAND).rect(0, 0, doc.width, 6);
     doc.text(doc.fit(data.title, W - 120, 9, true), M, 28, { size: 9, bold: true, color: MUTED });
-    doc.text('Trip report', M + W, 28, { size: 9, color: FAINT, align: 'right' });
+    doc.text(t('tripReport'), M + W, 28, { size: 9, color: FAINT, align: 'right' });
     doc.stroke(LINE).lineWidth(0.6).line(M, 38, M + W, 38);
     y = 60;
   };
@@ -306,28 +315,28 @@ async function renderPdf(data, opts = {}) {
   const HEAD = 132;
   doc.fill(BRAND).rect(0, 0, doc.width, HEAD);
   doc.fill(ACCENT).rect(0, HEAD - 4, doc.width, 4);
-  doc.text('TRIP REPORT', M, 40, { size: 8.5, bold: true, color: '#93c5fd' });
+  doc.text(upper(t('tripReport')), M, 40, { size: 8.5, bold: true, color: '#93c5fd' });
   const titleLines = doc.wrap(data.title, W, 26, true).slice(0, 2);
   titleLines.forEach((l, i) => doc.text(l, M, 72 + i * 28, { size: 26, bold: true, color: '#ffffff' }));
-  const subtitle = [data.dateRange, data.duration ? `${data.duration} day${data.duration === 1 ? '' : 's'}` : ''].filter(Boolean).join('   ·   ');
-  doc.text(subtitle || 'No dates set', M, 72 + titleLines.length * 28, { size: 10.5, color: '#cbd5e1' });
-  doc.text(`Generated ${fmtDate(new Date(), data.locale, { day: 'numeric', month: 'short', year: 'numeric', ...(data.timeZone ? { timeZone: data.timeZone } : {}) })}`, M + W, 40, { size: 8.5, color: '#94a3b8', align: 'right' });
+  const subtitle = [data.dateRange, data.duration ? t.n('nDays', data.duration) : ''].filter(Boolean).join('   ·   ');
+  doc.text(subtitle || t('noDates'), M, 72 + titleLines.length * 28, { size: 10.5, color: '#cbd5e1' });
+  doc.text(t('generated', { date: fmtDate(new Date(), data.locale, { day: 'numeric', month: 'short', year: 'numeric', ...(data.timeZone ? { timeZone: data.timeZone } : {}) }) }), M + W, 40, { size: 8.5, color: '#94a3b8', align: 'right' });
   y = HEAD + 24;
 
   // ---- stat tiles
   const stops = data.days.reduce((s, d) => s + d.stops.length, 0);
   const summary = costSummary(data);
   const stats = [
-    ['Days', String(data.days.length || data.duration || 0)],
-    ['Planned stops', String(stops)],
-    ['Places', String(stops + data.unscheduled.length)],
-    ['Total cost', summary && summary.length ? summary[0].formatted + (summary.length > 1 ? ' +' : '') : '—'],
+    [t('days'), String(data.days.length || data.duration || 0)],
+    [t('plannedStops'), String(stops)],
+    [t('places'), String(stops + data.unscheduled.length)],
+    [t('totalCost'), summary && summary.length ? summary[0].formatted + (summary.length > 1 ? ' +' : '') : '—'],
   ];
   const gap = 10, tw = (W - gap * 3) / 4;
   stats.forEach(([label, value], i) => {
     const x = M + i * (tw + gap);
     doc.fill(SOFT).roundRect(x, y, tw, 52, 6);
-    doc.text(label.toUpperCase(), x + 12, y + 18, { size: 7.5, bold: true, color: MUTED });
+    doc.text(doc.fit(upper(label), tw - 24, 7.5, true), x + 12, y + 18, { size: 7.5, bold: true, color: MUTED });
     doc.text(doc.fit(value, tw - 24, 15, true), x + 12, y + 40, { size: 15, bold: true, color: INK });
   });
   y += 52 + 20;
@@ -339,7 +348,7 @@ async function renderPdf(data, opts = {}) {
 
   // ---- map
   if (sections.has('map')) {
-    heading('Map overview');
+    heading(t('mapOverview'));
     const mh = Math.max(260, Math.min(430, BOTTOM - y - 64));
     const map = buildMap(data, W, mh);
     drawMap(doc, map, M, y);
@@ -356,7 +365,7 @@ async function renderPdf(data, opts = {}) {
       lx += iw;
     }
     if (data.unscheduled.some((p) => validCoord(p.lat, p.lng))) {
-      const label = 'Not scheduled';
+      const label = t('notScheduled');
       if (lx + 80 > M + W) { lx = M; y += 14; }
       doc.fill(FAINT).circle(lx + 4, y - 3, 3.5);
       doc.text(label, lx + 12, y, { size: 8, color: MUTED });
@@ -366,8 +375,8 @@ async function renderPdf(data, opts = {}) {
 
   // ---- itinerary
   if (sections.has('itinerary')) {
-    heading('Itinerary', `${data.days.length} day${data.days.length === 1 ? '' : 's'} · ${stops} stop${stops === 1 ? '' : 's'}`, sections.has('map') ? 150 : 60);
-    if (!data.days.length) { doc.text('No days planned yet.', M, y, { size: 10, color: MUTED }); y += 18; }
+    heading(t('itinerary'), `${t.n('nDays', data.days.length)} · ${t.n('nStops', stops)}`, sections.has('map') ? 150 : 60);
+    if (!data.days.length) { doc.text(t('noDays'), M, y, { size: 10, color: MUTED }); y += 18; }
     const MINI_W = 150, MINI_H = 112;
     for (const d of data.days) {
       // A per-day detail map beside the stops — the overview is too coarse for multi-city trips.
@@ -377,15 +386,17 @@ async function renderPdf(data, opts = {}) {
       const CW = mini ? W - MINI_W - 14 : W; // stop column width
       ensure(mini ? 26 + MINI_H : 56);
       y += 6;
-      doc.fill(d.color).roundRect(M, y - 13, 46, 18, 4);
-      doc.text(`DAY ${d.index + 1}`, M + 23, y, { size: 8.5, bold: true, color: '#ffffff', align: 'center' });
-      doc.text(d.label || '', M + 56, y, { size: 11.5, bold: true, color: INK });
+      const pill = upper(t('dayN', { n: d.index + 1 }));
+      const pw = Math.max(46, doc.measure(pill, 8.5, true) + 14), lx = M + Math.max(56, pw + 10);
+      doc.fill(d.color).roundRect(M, y - 13, pw, 18, 4);
+      doc.text(pill, M + pw / 2, y, { size: 8.5, bold: true, color: '#ffffff', align: 'center' });
+      doc.text(d.label || '', lx, y, { size: 11.5, bold: true, color: INK });
       const lw = doc.measure(d.label || '', 11.5, true);
-      if (d.title) doc.text(doc.fit(d.title, CW - 62 - lw, 10, false), M + 62 + lw, y, { size: 10, color: MUTED });
+      if (d.title) doc.text(doc.fit(d.title, CW - (lx - M) - 6 - lw, 10, false), lx + 6 + lw, y, { size: 10, color: MUTED });
       y += 16;
       const top = y, page = doc.pages.length;
-      if (mini) drawMap(doc, mini, M + W - MINI_W, top - 8, { scale: 2.5 });
-      if (!d.stops.length && !d.notes.length) { doc.text('Nothing planned yet.', M + 56, y, { size: 9, color: FAINT }); y += 16; }
+      if (mini) drawMap(doc, mini, M + W - MINI_W, top - 8);
+      if (!d.stops.length && !d.notes.length) { doc.text(t('nothingPlanned'), M + 56, y, { size: 9, color: FAINT }); y += 16; }
       d.stops.forEach((s, i) => {
         const meta = [s.category, s.address].filter(Boolean).join(' · ');
         const notes = s.notes ? doc.wrap(s.notes, CW - 60, 8.5).slice(0, 4) : [];
@@ -418,7 +429,7 @@ async function renderPdf(data, opts = {}) {
     if (data.unscheduled.length) {
       ensure(40);
       y += 6;
-      doc.text(`Not yet scheduled (${data.unscheduled.length})`, M, y, { size: 10, bold: true, color: INK });
+      doc.text(t('notYetScheduled', { n: data.unscheduled.length }), M, y, { size: 10, bold: true, color: INK });
       y += 14;
       for (const l of doc.wrap(data.unscheduled.map((p) => p.name).join('  ·  '), W, 9)) {
         ensure(12); doc.text(l, M, y, { size: 9, color: MUTED }); y += 12;
@@ -429,13 +440,13 @@ async function renderPdf(data, opts = {}) {
 
   // ---- lodging
   if (sections.has('lodging') && data.lodging.length) {
-    heading('Accommodation', `${data.lodging.length} stay${data.lodging.length === 1 ? '' : 's'}`, 18 * Math.min(3, data.lodging.length + 1));
+    heading(t('accommodation'), t.n('nStays', data.lodging.length), 18 * Math.min(3, data.lodging.length + 1));
     table(doc, {
       cols: [
-        { title: 'Where', w: W * 0.42, get: (r) => r.name, bold: true },
-        { title: 'Check-in', w: W * 0.2, get: (r) => [r.from, r.checkIn].filter(Boolean).join(' ') },
-        { title: 'Check-out', w: W * 0.2, get: (r) => [r.to, r.checkOut].filter(Boolean).join(' ') },
-        { title: 'Nights', w: W * 0.18, get: (r) => (r.nights === null ? '' : String(r.nights)), align: 'right' },
+        { title: t('where'), w: W * 0.42, get: (r) => r.name, bold: true },
+        { title: t('checkIn'), w: W * 0.2, get: (r) => [r.from, r.checkIn].filter(Boolean).join(' ') },
+        { title: t('checkOut'), w: W * 0.2, get: (r) => [r.to, r.checkOut].filter(Boolean).join(' ') },
+        { title: t('nights'), w: W * 0.18, get: (r) => (r.nights === null ? '' : String(r.nights)), align: 'right' },
       ],
       rows: data.lodging,
       x: M,
@@ -447,17 +458,17 @@ async function renderPdf(data, opts = {}) {
 
   // ---- costs
   if (sections.has('costs')) {
-    heading('Costs', data.costs ? `${data.costs.length} item${data.costs.length === 1 ? '' : 's'}` : '', 80);
+    heading(t('costs'), data.costs ? t.n('nExpenses', data.costs.length) : '', 80);
     if (!data.costs) {
-      doc.text('The Costs addon is not enabled for this trip, so no expenses are included.', M, y, { size: 9.5, color: MUTED });
+      doc.text(t('costsOffPdf'), M, y, { size: 9.5, color: MUTED });
       y += 18;
     } else if (!data.costs.length) {
-      doc.text('No expenses recorded yet.', M, y, { size: 9.5, color: MUTED });
+      doc.text(t('noExpenses'), M, y, { size: 9.5, color: MUTED });
       y += 18;
     } else {
       for (const g of summary) {
         ensure(40 + g.categories.length * 18);
-        doc.text(`Total${summary.length > 1 ? ' (' + g.currency + ')' : ''}`, M, y, { size: 9, bold: true, color: MUTED });
+        doc.text(summary.length > 1 ? t('totalCur', { cur: g.currency }) : t('total'), M, y, { size: 9, bold: true, color: MUTED });
         doc.text(g.formatted, M + W, y + 2, { size: 16, bold: true, color: INK, align: 'right' });
         y += 18;
         const max = Math.max(...g.categories.map((c) => c.total), 1);
@@ -475,10 +486,10 @@ async function renderPdf(data, opts = {}) {
       const rows = data.costs.slice().sort((a, b) => a.category.localeCompare(b.category) || b.amount - a.amount);
       table(doc, {
         cols: [
-          { title: 'Item', w: W * 0.44, get: (r) => r.name, bold: true },
-          { title: 'Category', w: W * 0.24, get: (r) => r.category },
-          { title: 'Persons', w: W * 0.1, get: (r) => (r.persons ? String(r.persons) : ''), align: 'right' },
-          { title: 'Amount', w: W * 0.22, get: (r) => fmtMoney(r.amount, r.currency, data.locale), align: 'right' },
+          { title: t('item'), w: W * 0.40, get: (r) => r.name, bold: true },
+          { title: t('category'), w: W * 0.22, get: (r) => r.category },
+          { title: t('persons'), w: W * 0.15, get: (r) => (r.persons ? String(r.persons) : ''), align: 'right' },
+          { title: t('amount'), w: W * 0.23, get: (r) => fmtMoney(r.amount, r.currency, data.locale), align: 'right' },
         ],
         rows,
         total: summary.map((g) => g.formatted).join('  +  '),
@@ -494,21 +505,33 @@ async function renderPdf(data, opts = {}) {
   for (let i = 0; i < total; i++) {
     doc.setPage(i);
     doc.stroke(LINE).lineWidth(0.6).line(M, doc.height - 34, M + W, doc.height - 34);
-    doc.text('Made with Trek PDF', M, doc.height - 20, { size: 7.5, color: FAINT });
-    doc.text(`Page ${i + 1} of ${total}`, M + W, doc.height - 20, { size: 7.5, color: FAINT, align: 'right' });
+    doc.text(t('madeWith'), M, doc.height - 20, { size: 7.5, color: FAINT });
+    doc.text(t('pageOf', { n: i + 1, total }), M + W, doc.height - 20, { size: 7.5, color: FAINT, align: 'right' });
   }
 
   // ---- basemaps: fetched after layout, then dropped into the slots drawMap reserved.
   const slots = doc.mapSlots || [];
-  const rasters = await Promise.all(slots.map((s) => (opts.basemap ? opts.basemap(s.map, s.scale).catch(() => null) : null)));
+  const bases = await Promise.all(slots.map((s) => (opts.basemap
+    ? opts.basemap(s.map, { labelScale: s.small ? 0.8 : 1, measure: (txt, size, bold) => doc.measure(txt, size, bold), reserved: s.reserved }).catch(() => null)
+    : null)));
   slots.forEach((s, i) => {
-    const r = rasters[i];
-    const ops = r
-      ? [...doc.imageOps(r, s.ox, s.oy, s.map.w, s.map.h), ...s.attribution]
-      : s.grid;
+    const b = bases[i];
+    const ops = b ? capture(doc, () => paintBasemap(doc, b, s.ox, s.oy, s.map.w, s.map.h)).concat(s.attribution) : s.grid;
     s.page[s.index] = ops.join('\n');
   });
   return doc;
+}
+
+/** Draw basemap geometry (map-local points) at the map's page origin. */
+function paintBasemap(doc, b, ox, oy, w, h) {
+  const shift = (rings) => rings.map((r) => r.map(([x, y]) => [ox + x, oy + y]));
+  doc.fill(b.background).rect(ox, oy, w, h);
+  for (const l of b.layers) {
+    if (l.kind === 'fill') doc.fill(l.color).path(shift(l.rings), 'fill');
+    else { doc.stroke(l.color).lineWidth(l.width).dash(...(l.dash || [0])); doc.path(shift(l.rings), 'stroke'); }
+  }
+  doc.dash(0);
+  for (const l of b.labels) doc.text(l.text, ox + l.x, oy + l.y, { size: l.size, bold: l.bold, color: l.color, align: 'center', halo: '#ffffff', haloWidth: l.size * 0.32 });
 }
 
 /** Capture the ops a drawing callback emits, without adding them to the page. */
@@ -521,16 +544,16 @@ function capture(doc, fn) {
   return out;
 }
 
-function drawMap(doc, map, ox, oy, { scale = 2 } = {}) {
+function drawMap(doc, map, ox, oy) {
   const { w, h } = map;
   doc.fill('#eef3f8').roundRect(ox, oy, w, h, 8);
   doc.save().clip(ox, oy, w, h, 8);
   if (map.empty) {
-    doc.text('No places with coordinates yet', ox + w / 2, oy + h / 2, { size: 11, bold: true, color: MUTED, align: 'center' });
-    doc.text('Add places to your itinerary to see them on the map.', ox + w / 2, oy + h / 2 + 16, { size: 9, color: FAINT, align: 'center' });
+    doc.text(doc.t('noCoords'), ox + w / 2, oy + h / 2, { size: 11, bold: true, color: MUTED, align: 'center' });
+    doc.text(doc.t('addPlaces'), ox + w / 2, oy + h / 2 + 16, { size: 9, color: FAINT, align: 'center' });
   } else {
-    // Reserve a slot: renderPdf fills it with the tile raster, or with this graticule when
-    // tiles are off/unreachable.
+    // Reserve a slot: renderPdf fills it with the vector basemap, or with this graticule
+    // when the basemap is off/unreachable.
     const grid = capture(doc, () => {
       doc.stroke('#d6dee8').lineWidth(0.5);
       for (const g of map.grid) doc.line(ox + g.x1, oy + g.y1, ox + g.x2, oy + g.y2);
@@ -542,7 +565,21 @@ function drawMap(doc, map, ox, oy, { scale = 2 } = {}) {
       doc.fill('#ffffff').rect(ox, oy + h - fs - 5, aw, fs + 5);
       doc.text(ATTRIBUTION, ox + 3, oy + h - 3.5, { size: fs, color: MUTED });
     });
-    (doc.mapSlots = doc.mapSlots || []).push({ map, ox, oy, scale, grid, attribution, page: doc.ops, index: doc.ops.length });
+    // Labels keep clear of route markers, the scale bar and the attribution.
+    const reserved = map.markers.map((m) => [m.x - 10, m.y - 10, m.x + 10, m.y + 10]);
+    // Scale bar: the first corner free of route markers (bottom-left holds the attribution).
+    if (map.scale) {
+      const bw = map.scale.len + 22, bh = 24;
+      const corners = small
+        ? [[w - bw, 0], [0, 0], [w - bw, h - bh - 2]]
+        : [[w - bw, h - bh - 4], [w - bw, 0], [0, 0]];
+      const free = ([x, y]) => !map.markers.some((m) => m.x > x - 10 && m.x < x + bw + 10 && m.y > y - 10 && m.y < y + bh + 10);
+      const [bx, by] = corners.find(free) || corners[0];
+      map.scaleBox = [bx, by, bx + bw, by + bh];
+      reserved.push(map.scaleBox);
+    }
+    reserved.push([0, h - 14, doc.measure(ATTRIBUTION, small ? 4.5 : 6) + 8, h]);
+    (doc.mapSlots = doc.mapSlots || []).push({ map, ox, oy, small, grid, attribution, reserved, page: doc.ops, index: doc.ops.length });
     doc.ops.push('');
     doc.stroke('#94a3b8').lineWidth(1.2).dash(4, 3);
     for (const l of map.links || []) doc.polyline(l.map(([x, y]) => [ox + x, oy + y]));
@@ -572,7 +609,7 @@ function drawMap(doc, map, ox, oy, { scale = 2 } = {}) {
       }
     }
     if (map.scale) {
-      const sx = ox + w - map.scale.len - 14, sy = oy + h - (small ? 10 : 14);
+      const sx = ox + map.scaleBox[0] + 8, sy = oy + map.scaleBox[1] + 20;
       doc.fill('#ffffff').roundRect(sx - 6, sy - 14, map.scale.len + 12, 20, 3);
       doc.stroke(INK).lineWidth(1.2).polyline([[sx, sy - 3], [sx, sy], [sx + map.scale.len, sy], [sx + map.scale.len, sy - 3]]);
       doc.text(map.scale.label, sx + map.scale.len / 2, sy - 5, { size: 6.5, bold: true, color: INK, align: 'center' });
@@ -588,7 +625,7 @@ function table(doc, t) {
     doc.fill(SOFT).rect(t.x, t.y, t.cols.reduce((s, c) => s + c.w, 0), RH);
     let x = t.x;
     for (const c of t.cols) {
-      doc.text(c.title.toUpperCase(), c.align === 'right' ? x + c.w - 8 : x + 8, t.y + 12, { size: 7.5, bold: true, color: MUTED, align: c.align || 'left' });
+      doc.text(doc.fit(doc.upper(c.title), c.w - 16, 7.5, true), c.align === 'right' ? x + c.w - 8 : x + 8, t.y + 12, { size: 7.5, bold: true, color: MUTED, align: c.align || 'left' });
       x += c.w;
     }
     t.y += RH;
@@ -609,7 +646,7 @@ function table(doc, t) {
   if (t.total) {
     t.ensure(RH + 4);
     const tw = t.cols.reduce((s, c) => s + c.w, 0);
-    doc.text('Total', t.x + 8, t.y + 14, { size: 9.5, bold: true, color: INK });
+    doc.text(doc.t('total'), t.x + 8, t.y + 14, { size: 9.5, bold: true, color: INK });
     doc.text(doc.fit(t.total, tw - 60, 9.5, true), t.x + tw - 8, t.y + 14, { size: 9.5, bold: true, color: INK, align: 'right' });
     t.y += RH + 4;
   }
@@ -617,8 +654,10 @@ function table(doc, t) {
 
 function fileName(data) {
   const date = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', ...(data.timeZone ? { timeZone: data.timeZone } : {}) }).format(new Date());
-  const safe = data.title.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, ' ').slice(0, 80) || 'Trip';
-  return `${safe} - Trip report ${date}.pdf`;
+  // Keep letters of every script; drop only what file systems reject.
+  const clean = (v) => v.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').trim().replace(/\s+/g, ' ');
+  const safe = clean(data.title).slice(0, 80) || data.t('trip');
+  return `${safe} - ${clean(data.t('tripReport'))} ${date}.pdf`;
 }
 
 module.exports = { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS };

@@ -196,16 +196,33 @@ function buildSfnt(tables) {
 }
 
 let cache = null;
-/** The bundled fonts, loaded once per process. */
+/**
+ * The bundled font families, loaded once per process, in fallback order: each character
+ * is drawn with the first family that has a glyph for it. Korean ships regular only
+ * (bold is synthesised) to keep the plugin small.
+ */
 function fonts() {
   if (!cache) {
     const dir = path.join(__dirname, 'fonts');
-    cache = {
-      regular: new TTFont(fs.readFileSync(path.join(dir, 'NotoSansSC-Regular.ttf')), 'NotoSansSC-Regular'),
-      bold: new TTFont(fs.readFileSync(path.join(dir, 'NotoSansSC-Bold.ttf')), 'NotoSansSC-Bold'),
-    };
+    const load = (file) => new TTFont(fs.readFileSync(path.join(dir, file + '.ttf')), file);
+    cache = [
+      { id: 'sc', regular: load('NotoSansSC-Regular'), bold: load('NotoSansSC-Bold') },
+      { id: 'kr', regular: load('NotoSansKR-Regular'), bold: null },
+      { id: 'th', regular: load('NotoSansThai-Regular'), bold: load('NotoSansThai-Bold') },
+    ];
   }
   return cache;
 }
 
-module.exports = { TTFont, fonts };
+/** True when some bundled family can draw every non-space character of `str`. */
+function covers(str) {
+  const fams = fonts();
+  for (const ch of String(str ?? '')) {
+    if (/\s/.test(ch)) continue;
+    const cp = ch.codePointAt(0);
+    if (!fams.some((f) => f.regular.has(cp))) return false;
+  }
+  return true;
+}
+
+module.exports = { TTFont, fonts, covers };

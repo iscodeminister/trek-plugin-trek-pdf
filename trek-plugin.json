@@ -1,10 +1,10 @@
 {
   "id": "trek-pdf",
   "name": "Trek PDF",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "apiVersion": 1,
   "author": "Your Name",
-  "description": "Generate a PDF trip report with a route map, day-by-day itinerary, accommodation and costs",
+  "description": "PDF trip report with OpenFreeMap route maps, day-by-day itinerary, accommodation and costs, in your TREK language",
   "type": "trip-page",
   "trek": ">=4.0.0 <6.0.0",
   "nativeModules": false,
@@ -12,22 +12,22 @@
     "db:read:trips",
     "db:read:costs",
     "db:write:files",
-    "http:outbound:tile.openstreetmap.org"
+    "http:outbound:tiles.openfreemap.org"
   ],
   "requiredAddons": [],
   "pluginDependencies": [],
   "icon": "FileText",
   "egress": [
-    "tile.openstreetmap.org"
+    "tiles.openfreemap.org"
   ],
   "settings": [
     {
       "key": "basemap",
-      "label": "OpenStreetMap background",
+      "label": "Map background (OpenFreeMap)",
       "input_type": "checkbox",
       "scope": "instance",
       "default": true,
-      "hint": "Draw OpenStreetMap tiles under the report maps. The server fetches tiles from tile.openstreetmap.org; turn off to keep every map fully offline (routes and markers only)."
+      "hint": "Draw OpenFreeMap Positron streets, water and place names under the report maps. The server fetches vector tiles from tiles.openfreemap.org; turn off to keep every map fully offline (routes and markers only)."
     }
   ]
 }
