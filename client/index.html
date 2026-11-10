@@ -157,7 +157,31 @@
       // basemap is scaled/shifted into place so nothing jumps.
       var R = 6371008.8, K_MIN = 512 * 2 / (2 * Math.PI), K_MAX = 512 * Math.pow(2, 17) / (2 * Math.PI);
       var M = null, cur = null, svg = null, gBase = null, gTop = null, baseView = null, baseHalo = '#ffffff';
-      var baseTimer = null, baseSeq = 0, baseCache = {}, baseKeys = [], style = 'positron', styleTouched = false;
+      var baseTimer = null, baseSeq = 0, baseCache = {}, baseKeys = [], style = 'bright', styleTouched = false;
+      // Zoom state per map view (-1 = all days, else day index): [cx, cy, k]. Kept in the
+      // trip-scoped tab session so it survives switching TREK tabs, and sent with the
+      // report so the PDF maps show the same area.
+      var views = {}, viewsLoaded = {}, saveTimer = null;
+      function remember() {
+        var v = view, val = [+cur.cx.toFixed(7), +cur.cy.toFixed(7), +cur.k.toFixed(2)];
+        views[v] = val;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () { if (trek.session) trek.session.set('view:' + v, val, { scope: 'trip' }).catch(function () {}); }, 300);
+      }
+      function forget() {
+        delete views[view];
+        if (trek.session) trek.session.remove('view:' + view, { scope: 'trip' }).catch(function () {});
+      }
+      // Saved zooms of views not opened yet still belong in the PDF → read them all up front.
+      function preloadViews(days) {
+        if (!trek.session) return;
+        for (var v = -1; v < days; v++) (function (v) {
+          if (views[v] || viewsLoaded[v]) return;
+          viewsLoaded[v] = true;
+          trek.session.get('view:' + v, { scope: 'trip' }).then(function (val) { if (validView(val) && !views[v]) views[v] = val; }).catch(function () {});
+        })(v);
+      }
+      function validView(v) { return Array.isArray(v) && v.length === 3 && v.every(function (n) { return typeof n === 'number' && isFinite(n); }) && v[2] > 0; }
       var STYLE_NAMES = { positron: 'Positron', bright: 'Bright', liberty: 'Liberty', dark: 'Dark', fiord: 'Fiord', osm: 'OpenStreetMap' };
       var mx = function (lng) { return lng * Math.PI / 180; };
       var my = function (lat) { return Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); };
@@ -273,9 +297,10 @@
         }
       }
 
-      function setView(v, delay) {
+      function setView(v, delay, quiet) {
         var k = clamp(v.k, K_MIN, K_MAX);
         cur = { cx: clamp(v.cx, -Math.PI, Math.PI), cy: clamp(v.cy, -3.1, 3.1), k: k };
+        if (!quiet) remember();
         redraw();
         requestBase(delay);
       }
@@ -316,7 +341,7 @@
         function up(e) {
           if (!(e.pointerId in ptrs)) return;
           delete ptrs[e.pointerId];
-          if (!Object.keys(ptrs).length) { svg.classList.remove('dragging'); requestBase(150); }
+          if (!Object.keys(ptrs).length) { svg.classList.remove('dragging'); remember(); requestBase(150); }
         }
         svg.addEventListener('pointerup', up);
         svg.addEventListener('pointercancel', up);
@@ -350,7 +375,7 @@
         zc.className = 'zoom';
         [['+', 'zoomIn', function () { zoomAt(2, M.w / 2, M.h / 2); }],
          ['−', 'zoomOut', function () { zoomAt(0.5, M.w / 2, M.h / 2); }],
-         ['⤢', 'resetView', function () { setView(M.view, 0); }]].forEach(function (c) {
+         ['⤢', 'resetView', function () { forget(); setView(M.view, 0, true); }]].forEach(function (c) {
           var b = document.createElement('button');
           b.type = 'button'; b.textContent = c[0]; b.title = t(c[1]); b.setAttribute('aria-label', t(c[1]));
           b.addEventListener('click', c[2]);
@@ -358,8 +383,20 @@
         });
         box.appendChild(zc);
         attachInteractions();
-        redraw();
-        requestBase(0);
+        // Restore this view's saved zoom (memory first, then the tab session) before the
+        // first basemap request, so nothing renders twice.
+        var v = view, map = svg;
+        function start(saved) {
+          if (map !== svg) return;
+          if (validView(saved)) { views[v] = saved; cur = { cx: saved[0], cy: saved[1], k: saved[2] }; }
+          redraw();
+          requestBase(0);
+        }
+        if (views[v] || !trek.session) start(views[v]);
+        else {
+          viewsLoaded[v] = true;
+          trek.session.get('view:' + v, { scope: 'trip' }).then(start, function () { start(null); });
+        }
       }
 
       // The design kit mirrors a <select> into its own listbox on 'change'; send a marked
@@ -421,6 +458,7 @@
         $('s-cost').title = s.costs ? s.costs.map(function (c) { return c.formatted; }).join(' + ') : '';
         if (view >= s.days) view = -1;
         setupStyles(s);
+        preloadViews(s.days);
         showView(view);
 
         // Costs
@@ -462,6 +500,7 @@
         if (!o.tripId) { $('title').textContent = t('openTrip'); reveal(); return; }
         var key = JSON.stringify(o);
         if (key === loadedFor) return;
+        if (loadedFor && JSON.parse(loadedFor).tripId !== o.tripId) { views = {}; viewsLoaded = {}; }
         loadedFor = key;
         baseCache = {}; baseKeys = [];
         trek.invoke('/summary', { method: 'POST', body: o }).then(unwrap).then(render).catch(function (e) {
@@ -494,7 +533,7 @@
         if (!sections.length) { trek.notify('warning', t('pickSection')); return; }
         var btn = $('generate'), res = $('result');
         btn.disabled = true; btn.textContent = t('generating'); res.hidden = true;
-        var body = opts(); body.sections = sections; body.paper = paper; body.style = style;
+        var body = opts(); body.sections = sections; body.paper = paper; body.style = style; body.views = views;
         trek.invoke('/report', { method: 'POST', body: body }).then(unwrap).then(function (r) {
           var kb = Math.max(1, Math.round(r.file.size / 1024));
           res.hidden = false;

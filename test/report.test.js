@@ -148,3 +148,18 @@ test('basemap route validates an explicit view; unknown styles fall back', async
   assert.ok(Number.isFinite(m.lat) && Number.isFinite(m.lng), 'markers carry lat/lng for client-side zoom');
   assert.ok(s.body.map.routes.every((r) => r.ll.length === r.points.length));
 });
+
+test('report uses the zoom saved in the tab; invalid views are ignored', async () => {
+  const { buildMap, PREVIEW } = require('../server/report');
+  const { loadTrip } = require('../server/report');
+  const h = host({ grants: [...GRANTS, 'db:read:files'] });
+  const data = await loadTrip(h.ctx, 1, {});
+  const fit = buildMap(data, ...PREVIEW);
+  const zoomed = [fit.view.cx + 0.01, fit.view.cy, fit.view.k * 4];
+  // Same centre, and k rescaled so the preview's area fits the PDF map size.
+  const m = buildMap(data, 300, 200, { view: { cx: zoomed[0], cy: zoomed[1], k: zoomed[2] * Math.min(300 / PREVIEW[0], 200 / PREVIEW[1]) } });
+  assert.strictEqual(m.view.cx, zoomed[0]);
+  assert.ok(Math.abs(m.view.k - zoomed[2] * (300 / 640)) < 1e-9);
+  const ok = await call(h.ctx, '/report', { tripId: 1, views: { '-1': zoomed, 0: zoomed, bad: zoomed, 1: [1, 2], 2: [99, 0, 5] } });
+  assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+});

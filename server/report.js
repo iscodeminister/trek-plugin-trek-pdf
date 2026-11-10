@@ -206,7 +206,8 @@ const unY = (y) => (Math.atan(Math.exp(y)) * 360) / Math.PI - 90;
  * the PDF writer and by the tab's live SVG preview.
  */
 function buildMap(data, w, h, opts = {}) {
-  const { minSpan = 0.004, pad = 36, labels = true, gridLabels = true } = opts;
+  // opts.view: an explicit { cx, cy, k } (the user's zoom from the tab) instead of fit-to-stops.
+  const { minSpan = 0.004, pad = 36, labels = true, gridLabels = true, view = null } = opts;
   const pts = [];
   for (const d of data.days) for (const s of d.stops) if (validCoord(s.lat, s.lng)) pts.push(s);
   for (const s of data.unscheduled) if (validCoord(s.lat, s.lng)) pts.push(s);
@@ -220,9 +221,9 @@ function buildMap(data, w, h, opts = {}) {
     x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
   }
   // minSpan (radians of Mercator x/y; 0.004 ≈ 25 km) keeps a single place from zooming to street level.
-  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
   const sx = Math.max(x1 - x0, minSpan), sy = Math.max(y1 - y0, minSpan);
-  const k = Math.min((w - 2 * pad) / sx, (h - 2 * pad) / sy);
+  const cx = view ? view.cx : (x0 + x1) / 2, cy = view ? view.cy : (y0 + y1) / 2;
+  const k = view ? view.k : Math.min((w - 2 * pad) / sx, (h - 2 * pad) / sy);
   const P = (lat, lng) => [w / 2 + (mx(lng) - cx) * k, h / 2 - (my(lat) - cy) * k];
 
   // Graticule: aim for ~5 lines across the wider axis.
@@ -285,7 +286,16 @@ const SECTIONS = ['map', 'itinerary', 'lodging', 'costs'];
  * @param opts.basemap  async (mapModel, { labelScale, measure, reserved }) => basemap|null —
  *                      vector background (see basemap.js); omitted → graticule only.
  */
+// The tab's preview map size; a zoom saved there is rescaled so the same area fits a PDF map.
+const PREVIEW = [640, 380];
+const fromPreview = (v, w, h) => (v ? { cx: v[0], cy: v[1], k: v[2] * Math.min(w / PREVIEW[0], h / PREVIEW[1]) } : null);
+
+/**
+ * @param opts.views  { '-1': [cx, cy, k], '<dayIndex>': [...] } — zoom states from the tab
+ *                    (overview / per day); views not listed fit their stops.
+ */
 async function renderPdf(data, opts = {}) {
+  const views = opts.views || {};
   const sections = new Set((opts.sections || SECTIONS).filter((s) => SECTIONS.includes(s)));
   const t = data.t;
   const upper = (v) => v.toLocaleUpperCase(data.locale);
@@ -353,7 +363,7 @@ async function renderPdf(data, opts = {}) {
   if (sections.has('map')) {
     heading(t('mapOverview'));
     const mh = Math.max(260, Math.min(430, BOTTOM - y - 64));
-    const map = buildMap(data, W, mh);
+    const map = buildMap(data, W, mh, { view: fromPreview(views['-1'], W, mh) });
     drawMap(doc, map, M, y);
     y += mh + 12;
     // legend
@@ -384,7 +394,7 @@ async function renderPdf(data, opts = {}) {
     for (const d of data.days) {
       // A per-day detail map beside the stops — the overview is too coarse for multi-city trips.
       const mini = sections.has('map') && d.stops.some((s) => validCoord(s.lat, s.lng))
-        ? buildMap({ days: [d], unscheduled: [] }, MINI_W, MINI_H, { minSpan: 0.0006, pad: 16, labels: false, gridLabels: false })
+        ? buildMap({ days: [d], unscheduled: [] }, MINI_W, MINI_H, { minSpan: 0.0006, pad: 16, labels: false, gridLabels: false, view: fromPreview(views[d.index], MINI_W, MINI_H) })
         : null;
       const CW = mini ? W - MINI_W - 14 : W; // stop column width
       ensure(mini ? 26 + MINI_H : 56);
@@ -665,4 +675,4 @@ function fileName(data) {
   return `${safe} - ${clean(data.t('tripReport'))} ${date}.pdf`;
 }
 
-module.exports = { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS };
+module.exports = { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS, PREVIEW };

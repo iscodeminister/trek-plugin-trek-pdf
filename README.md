@@ -10,6 +10,8 @@ Trek PDF adds a **Report** tab to every trip. The tab shows a live preview of th
 
 **The preview map is interactive.** Zoom with the **+** and **−** buttons, a double-click (Shift + double-click zooms out), Ctrl/⌘ + mouse wheel, or a trackpad or touch pinch; a plain mouse wheel still scrolls the page. Drag to pan, and press **⤢** to fit the whole trip again. The day buttons under the map jump to each day's own map.
 
+**What you frame is what you print.** Each map view (all days, and every single day) keeps its own zoom and position. The tab remembers them while it stays open, even when you switch to other TREK tabs and back. The PDF uses them too: the overview shows the area you framed for all days, and each day's map shows the area you framed for that day. Views you never touched fit their stops automatically.
+
 **Map style.** Choose from six styles: OpenFreeMap's **Bright** (the default) and **Liberty** (colourful), **Positron** (light grey), **Dark** and **Fiord** (blue-grey), or the standard **OpenStreetMap** map. The style you pick is used for the preview and for every map in the PDF, and the tab remembers it while it stays open.
 
 The report contains:

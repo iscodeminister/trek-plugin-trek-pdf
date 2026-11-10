@@ -96,7 +96,14 @@ module.exports = definePlugin({
         const data = await loadTrip(ctx, tripId, { lang, locale, currency, timeZone });
         const style = styleOf(ctx, body.style);
         const basemap = basemapOn(ctx) ? (m, o) => renderBasemap(m, { ...o, lang, style, pdf: true }) : null;
-        const pdf = (await renderPdf(data, { sections, paper, basemap })).toBuffer();
+        // Zoom states from the tab: { '-1' | dayIndex: [cx, cy, k] }, validated.
+        const views = {};
+        if (body.views && typeof body.views === 'object') {
+          for (const [key, v] of Object.entries(body.views).slice(0, 400)) {
+            if (/^(-1|\d{1,4})$/.test(key) && Array.isArray(v) && v.length === 3 && finite(v[0], -Math.PI, Math.PI) && finite(v[1], -3.2, 3.2) && finite(v[2], 10, 2e7)) views[key] = v;
+          }
+        }
+        const pdf = (await renderPdf(data, { sections, paper, basemap, views })).toBuffer();
         const name = fileName(data);
         const file = await ctx.files.create(tripId, {
           name,
