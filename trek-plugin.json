@@ -3,7 +3,7 @@
   "name": "Trek PDF",
   "version": "1.3.1",
   "apiVersion": 1,
-  "author": "Your Name",
+  "author": "iscodeminister",
   "description": "PDF trip report with OpenFreeMap route maps, day-by-day itinerary, accommodation and costs, in your TREK language",
   "type": "trip-page",
   "trek": ">=4.0.0 <6.0.0",
