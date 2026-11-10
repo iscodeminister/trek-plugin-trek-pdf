@@ -241,27 +241,30 @@ function buildMap(data, w, h, opts = {}) {
     grid.push({ x1: 0, y1: y, x2: w, y2: y, label: gridLabels ? `${Math.abs(g).toFixed(decimals)}°${g < 0 ? 'S' : 'N'}` : '', lx: 4, ly: y - 3 });
   }
 
+  // Every element also keeps its lat/lng (ll) so the tab can re-project it while zooming.
   const routes = [], markers = [], links = [];
-  let prevEnd = null;
+  let prevEnd = null, prevLL = null;
   for (const d of data.days) {
-    const line = [];
+    const line = [], ll = [];
     d.stops.forEach((s, i) => {
       if (!validCoord(s.lat, s.lng)) return;
       const [x, y] = P(s.lat, s.lng);
       line.push([x, y]);
-      markers.push({ x, y, color: d.color, n: i + 1, day: d.index + 1, label: s.name });
+      ll.push([s.lat, s.lng]);
+      markers.push({ x, y, lat: s.lat, lng: s.lng, color: d.color, n: i + 1, day: d.index + 1, label: s.name });
     });
-    if (line.length > 1) routes.push({ color: d.color, points: line });
+    if (line.length > 1) routes.push({ color: d.color, points: line, ll });
     // Dashed "journey" link from where the previous day ended to where this one starts.
     if (line.length) {
-      if (prevEnd && Math.hypot(prevEnd[0] - line[0][0], prevEnd[1] - line[0][1]) > 2) links.push([prevEnd, line[0]]);
+      if (prevEnd && Math.hypot(prevEnd[0] - line[0][0], prevEnd[1] - line[0][1]) > 2) links.push({ points: [prevEnd, line[0]], ll: [prevLL, ll[0]] });
       prevEnd = line[line.length - 1];
+      prevLL = ll[ll.length - 1];
     }
   }
   for (const s of data.unscheduled) {
     if (!validCoord(s.lat, s.lng)) continue;
     const [x, y] = P(s.lat, s.lng);
-    markers.unshift({ x, y, color: FAINT, n: null, day: null, label: s.name });
+    markers.unshift({ x, y, lat: s.lat, lng: s.lng, color: FAINT, n: null, day: null, label: s.name });
   }
 
   // Scale bar: a round distance close to a fifth of the width.
@@ -531,7 +534,7 @@ function paintBasemap(doc, b, ox, oy, w, h) {
     else { doc.stroke(l.color).lineWidth(l.width).dash(...(l.dash || [0])); doc.path(shift(l.rings), 'stroke'); }
   }
   doc.dash(0);
-  for (const l of b.labels) doc.text(l.text, ox + l.x, oy + l.y, { size: l.size, bold: l.bold, color: l.color, align: 'center', halo: '#ffffff', haloWidth: l.size * 0.32 });
+  for (const l of b.labels) doc.text(l.text, ox + l.x, oy + l.y, { size: l.size, bold: l.bold, color: l.color, align: 'center', halo: b.halo || '#ffffff', haloWidth: l.size * 0.32 });
 }
 
 /** Capture the ops a drawing callback emits, without adding them to the page. */
@@ -582,7 +585,7 @@ function drawMap(doc, map, ox, oy) {
     (doc.mapSlots = doc.mapSlots || []).push({ map, ox, oy, small, grid, attribution, reserved, page: doc.ops, index: doc.ops.length });
     doc.ops.push('');
     doc.stroke('#94a3b8').lineWidth(1.2).dash(4, 3);
-    for (const l of map.links || []) doc.polyline(l.map(([x, y]) => [ox + x, oy + y]));
+    for (const l of map.links || []) doc.polyline(l.points.map(([x, y]) => [ox + x, oy + y]));
     doc.dash(0);
     for (const r of map.routes) {
       doc.stroke('#ffffff').lineWidth(4.5).polyline(r.points.map(([x, y]) => [ox + x, oy + y]));

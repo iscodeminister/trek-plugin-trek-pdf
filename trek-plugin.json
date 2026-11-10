@@ -1,7 +1,7 @@
 {
   "id": "trek-pdf",
   "name": "Trek PDF",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "apiVersion": 1,
   "author": "Your Name",
   "description": "PDF trip report with OpenFreeMap route maps, day-by-day itinerary, accommodation and costs, in your TREK language",
@@ -28,6 +28,36 @@
       "scope": "instance",
       "default": true,
       "hint": "Draw OpenFreeMap Positron streets, water and place names under the report maps. The server fetches vector tiles from tiles.openfreemap.org; turn off to keep every map fully offline (routes and markers only)."
+    },
+    {
+      "key": "map_style",
+      "label": "Default map style",
+      "input_type": "select",
+      "scope": "instance",
+      "default": "positron",
+      "hint": "The style the Report tab starts with; each user can still pick another one in the tab.",
+      "options": [
+        {
+          "value": "positron",
+          "label": "Positron (light grey)"
+        },
+        {
+          "value": "bright",
+          "label": "Bright (colourful)"
+        },
+        {
+          "value": "liberty",
+          "label": "Liberty (colourful, blue water)"
+        },
+        {
+          "value": "dark",
+          "label": "Dark"
+        },
+        {
+          "value": "fiord",
+          "label": "Fiord (blue-grey)"
+        }
+      ]
     }
   ]
 }

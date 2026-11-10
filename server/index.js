@@ -1,13 +1,16 @@
 // Built plugin entry — runs in an isolated child process.
 const { definePlugin } = require('trek-plugin-sdk');
 const { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS } = require('./report');
-const { renderBasemap, toSvg } = require('./basemap');
+const { renderBasemap, toSvg, STYLE_IDS } = require('./basemap');
 const { normalizeLang, intlLocale, pdfLang, uiBundle } = require('./i18n');
 
 const UI_MAP = [640, 380];
 const dayMap = (d, w, h) => buildMap({ days: [d], unscheduled: [] }, w, h, { minSpan: 0.0006, pad: 48 });
 // Instance setting (Admin → Plugins → Trek PDF): OpenFreeMap background on/off.
 const basemapOn = (ctx) => ctx.config.basemap !== false && ctx.config.basemap !== 'false';
+// The user's pick from the tab, else the admin's default (Instance settings), else Positron.
+const styleOf = (ctx, wanted) => (STYLE_IDS.includes(wanted) ? wanted : STYLE_IDS.includes(ctx.config.map_style) ? ctx.config.map_style : 'positron');
+const finite = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 
 const json = (status, body) => ({ status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const LOCALE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -70,6 +73,8 @@ module.exports = definePlugin({
           // One zoomed map per day so the tab can drill in (the overview is coarse for multi-city trips).
           dayMaps: data.days.map((d) => dayMap(d, ...UI_MAP)),
           basemap: basemapOn(ctx),
+          styles: STYLE_IDS,
+          style: styleOf(ctx),
         });
       }),
     },
@@ -89,7 +94,8 @@ module.exports = definePlugin({
         const lang = pdfLang(input.lang);
         const locale = lang === input.lang ? input.locale : 'en-US';
         const data = await loadTrip(ctx, tripId, { lang, locale, currency, timeZone });
-        const basemap = basemapOn(ctx) ? (m, o) => renderBasemap(m, { ...o, lang, pdf: true }) : null;
+        const style = styleOf(ctx, body.style);
+        const basemap = basemapOn(ctx) ? (m, o) => renderBasemap(m, { ...o, lang, style, pdf: true }) : null;
         const pdf = (await renderPdf(data, { sections, paper, basemap })).toBuffer();
         const name = fileName(data);
         const file = await ctx.files.create(tripId, {
@@ -103,14 +109,24 @@ module.exports = definePlugin({
       }),
     },
     {
-      // The tab's map background as vector geometry (SVG path data). view: -1 = whole
-      // trip, otherwise a day index. Map labels follow the UI language.
+      // The tab's map background as vector geometry (SVG path data). Labels follow the UI
+      // language. Either an explicit Mercator view { cx, cy, k } (zoom/pan in the tab, with
+      // the marker boxes labels must avoid), or view: -1 = whole trip / a day index.
       method: 'POST', path: '/basemap', auth: true,
       handler: (req, ctx) => handle(async () => {
         const { tripId, lang, body } = readInput(req);
+        if (!basemapOn(ctx)) return json(200, { basemap: null });
+        const style = styleOf(ctx, body.style);
+        const v = body.view;
+        if (v && typeof v === 'object') {
+          if (!finite(v.cx, -Math.PI, Math.PI) || !finite(v.cy, -3.2, 3.2) || !finite(v.k, 10, 2e7)) return json(400, { error: 'invalid view' });
+          const reserved = (Array.isArray(body.reserved) ? body.reserved.slice(0, 400) : [])
+            .filter((b) => Array.isArray(b) && b.length === 4 && b.every((n) => finite(n, -1e4, 1e4)));
+          const base = await renderBasemap({ view: { cx: v.cx, cy: v.cy, k: v.k }, w: UI_MAP[0], h: UI_MAP[1] }, { lang, style, labelScale: 1.25, reserved });
+          return json(200, { basemap: base ? toSvg(base) : null });
+        }
         const bad = needTrip(tripId);
         if (bad) return bad;
-        if (!basemapOn(ctx)) return json(200, { basemap: null });
         const data = await loadTrip(ctx, tripId, { lang });
         const view = Number.isInteger(body.view) ? body.view : -1;
         const model = view >= 0 && data.days[view] ? dayMap(data.days[view], ...UI_MAP) : buildMap(data, ...UI_MAP);
@@ -118,7 +134,7 @@ module.exports = definePlugin({
         const reserved = model.markers.map((m) => [m.x - 12, m.y - 12, m.x + 12, m.y + 12]);
         if (model.scale) reserved.push([UI_MAP[0] - model.scale.len - 24, UI_MAP[1] - 26, UI_MAP[0], UI_MAP[1]]);
         reserved.push([0, UI_MAP[1] - 16, 230, UI_MAP[1]]);
-        const base = await renderBasemap(model, { lang, labelScale: 1.25, reserved });
+        const base = await renderBasemap(model, { lang, style, labelScale: 1.25, reserved });
         return json(200, { basemap: base ? toSvg(base) : null });
       }),
     },

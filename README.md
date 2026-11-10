@@ -8,6 +8,10 @@ A printable trip report for TREK: route maps, a day-by-day itinerary, accommodat
 
 Trek PDF adds a **Report** tab to every trip. The tab shows a live preview of the trip with a route map, the main numbers and the cost split by category. Pick the sections you want, choose A4 or Letter, and press **Generate PDF**.
 
+**The preview map is interactive.** Zoom with the **+** and **−** buttons, a double-click (Shift + double-click zooms out), Ctrl/⌘ + mouse wheel, or a trackpad or touch pinch; a plain mouse wheel still scrolls the page. Drag to pan, and press **⤢** to fit the whole trip again. The day buttons under the map jump to each day's own map.
+
+**Map style.** Choose from OpenFreeMap's five styles: **Positron** (light grey), **Bright** and **Liberty** (colourful), **Dark** and **Fiord** (blue-grey). The style you pick is used for the preview and for every map in the PDF, and the tab remembers it while it stays open.
+
 The report contains:
 
 - **Map overview.** Every planned stop on a clean OpenFreeMap Positron map, coloured by day, with dashed lines showing how the trip moves from one day to the next. Each day also gets its own zoomed-in street map, so a trip that covers several cities stays readable. The maps are vector graphics: they stay sharp when you zoom or print, and a report with maps is a few hundred kilobytes.
@@ -45,6 +49,7 @@ Install Trek PDF from **Admin → Plugins → Discover**, activate it and approv
 One optional instance setting, under **Admin → Plugins → Trek PDF → Instance settings**:
 
 - **Map background (OpenFreeMap)** (on by default). Turn it off for maps without a background, drawn entirely by the plugin, with no outbound requests.
+- **Default map style** (Positron). The style the tab starts with. Each user can still pick another one in the tab.
 
 **Limitations.** Arabic and Hebrew get an English PDF (see above). Scripts none of the bundled fonts cover, such as Devanagari, show as empty boxes. A currency symbol the fonts can't draw, such as ₹, is written as the currency code instead (for example `INR 1,200.00`). Thai vowel and tone marks are placed without full shaping, so in rare combinations they can sit slightly off.
 

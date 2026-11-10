@@ -13,13 +13,41 @@ const MAX_TILES = 16;
 const CACHE_BYTES = 48 * 1024 * 1024;
 const LAYERS = new Set(['water', 'park', 'landcover', 'landuse', 'waterway', 'transportation', 'boundary', 'place', 'water_name', 'aeroway']);
 
-// Positron palette (openfreemap.org/styles/positron), flattened onto its background.
-const C = {
-  background: '#f2f3f0', water: '#c2c8ca', park: '#e6e9e5', wood: '#dce0dc', residential: '#eaeae6', ice: '#fafafa',
-  waterway: '#bdcace', casing: '#d5d5d5', inner: '#ffffff', subtle: '#e3e3e1', minor: '#e0e0e0', rail: '#d9d9d9',
-  boundary: '#b3b3b3', boundarySub: '#c9c9c9', aeroway: '#ffffff',
-  label: '#000000', labelSoft: '#333333', labelSuburb: '#666666', waterLabel: '#495e91',
+// OpenFreeMap's five styles (openfreemap.org/styles/*), reduced to the layers this renderer
+// draws and flattened onto each style's background (no alpha in the PDF).
+const STYLES = {
+  positron: {
+    background: '#f2f3f0', water: '#c2c8ca', park: '#e6e9e5', wood: '#dce0dc', residential: '#eaeae6', ice: '#fafafa',
+    waterway: '#bdcace', motorwayCasing: '#d5d5d5', motorwayInner: '#ffffff', majorCasing: '#d5d5d5', majorInner: '#ffffff',
+    low: '#e3e3e1', minor: '#e0e0e0', minorCasing: null, rail: '#d9d9d9', boundary: '#b3b3b3', boundarySub: '#c9c9c9', aeroway: '#ffffff',
+    label: '#000000', labelSoft: '#333333', labelSuburb: '#666666', waterLabel: '#495e91', halo: '#ffffff',
+  },
+  bright: {
+    background: '#f8f4f0', water: '#aecfe2', park: '#d8e8c8', wood: '#d6e6c3', residential: '#f3eee9', ice: '#ffffff',
+    waterway: '#a0c8f0', motorwayCasing: '#e9ac77', motorwayInner: '#ffcc88', majorCasing: '#e9ac77', majorInner: '#ffeeaa',
+    low: '#f2d4b0', minor: '#ffffff', minorCasing: '#cfcdca', rail: '#bbbbbb', boundary: '#a3a1ac', boundarySub: '#b3b3b3', aeroway: '#f0ede9',
+    label: '#333333', labelSoft: '#555555', labelSuburb: '#777777', waterLabel: '#495e91', halo: '#ffffff',
+  },
+  liberty: {
+    background: '#f8f4f0', water: '#9ebdff', park: '#d8e8c8', wood: '#c4e2ac', residential: '#efe6dc', ice: '#ffffff',
+    waterway: '#a0c8f0', motorwayCasing: '#e9ac77', motorwayInner: '#ffcc88', majorCasing: '#e9ac77', majorInner: '#ffeeaa',
+    low: '#efc49a', minor: '#ffffff', minorCasing: '#cfcdca', rail: '#bbbbbb', boundary: '#696869', boundarySub: '#b3b3b3', aeroway: '#f0ede9',
+    label: '#000000', labelSoft: '#333333', labelSuburb: '#666666', waterLabel: '#495e91', halo: '#ffffff',
+  },
+  dark: {
+    background: '#0c0c0c', water: '#1b1b1d', park: '#1c1c1c', wood: '#202020', residential: '#0e0d0d', ice: '#1a1a1a',
+    waterway: '#1b1b1d', motorwayCasing: '#3c3c3c', motorwayInner: '#000000', majorCasing: '#2c2c2c', majorInner: '#0a0a0a',
+    low: '#181818', minor: '#181818', minorCasing: null, rail: '#232323', boundary: '#3b3b3b', boundarySub: '#363636', aeroway: '#161616',
+    label: '#8a8a8a', labelSoft: '#737373', labelSuburb: '#5e5e5e', waterLabel: '#5b6170', halo: '#000000',
+  },
+  fiord: {
+    background: '#45516e', water: '#38435c', park: '#4a5a69', wood: '#3f4965', residential: '#45516e', ice: '#56627e',
+    waterway: '#363d57', motorwayCasing: '#59668a', motorwayInner: '#3b4359', majorCasing: '#59668a', majorInner: '#3e4760',
+    low: '#57608a', minor: '#59668a', minorCasing: null, rail: '#283337', boundary: '#9ebfe8', boundarySub: '#6d8c9b', aeroway: '#4d5976',
+    label: '#b5c8cf', labelSoft: '#a3b6c0', labelSuburb: '#4a8aa3', waterLabel: '#6e7da4', halo: '#152055',
+  },
 };
+const STYLE_IDS = Object.keys(STYLES);
 
 // ---------------------------------------------------------------- tile source
 
@@ -93,7 +121,7 @@ const lw = (z, at, base, perZoom, max) => Math.min(max, Math.max(0.2, base + (z 
  * Turn decoded tiles into drawing layers, painted in order.
  * Each layer: { kind: 'fill'|'line', color, width?, dash?, rings: [[ [x,y], ... ]] }
  */
-function styleFeatures(tiles, z, project) {
+function styleFeatures(tiles, z, project, C) {
   const L = {};
   const layer = (id, kind, color, width, dash) => (L[id] ||= { kind, color, width, dash, rings: [] });
   const order = [];
@@ -125,14 +153,16 @@ function styleFeatures(tiles, z, project) {
       if (f.type !== 2) return;
       const g = P(f.geom, false), cls = p.class;
       if (cls === 'motorway') {
-        if (z < 7) add('motorway_low', 'line', C.subtle, 0.6, null, g);
-        else { add('motorway_casing', 'line', C.casing, lw(z, 7, 1.4, 0.35, 4.5), null, g); add('motorway_inner', 'line', C.inner, lw(z, 7, 0.8, 0.3, 3.4), null, g); }
+        if (z < 7) add('motorway_low', 'line', C.low, 0.6, null, g);
+        else { add('motorway_casing', 'line', C.motorwayCasing, lw(z, 7, 1.4, 0.35, 4.5), null, g); add('motorway_inner', 'line', C.motorwayInner, lw(z, 7, 0.8, 0.3, 3.4), null, g); }
       } else if (cls === 'trunk' || cls === 'primary' || cls === 'secondary' || cls === 'tertiary') {
         const major = cls === 'trunk' || cls === 'primary';
-        if (z < 11) { if (major || z >= 9) add('major_low', 'line', C.subtle, major ? 0.55 : 0.4, null, g); }
-        else { add('major_casing', 'line', C.casing, lw(z, 11, 1.4, 0.4, 4), null, g); add('major_inner', 'line', C.inner, lw(z, 11, 0.9, 0.35, 3), null, g); }
+        if (z < 11) { if (major || z >= 9) add('major_low', 'line', C.low, major ? 0.55 : 0.4, null, g); }
+        else { add('major_casing', 'line', C.majorCasing, lw(z, 11, 1.4, 0.4, 4), null, g); add('major_inner', 'line', C.majorInner, lw(z, 11, 0.9, 0.35, 3), null, g); }
       } else if ((cls === 'minor' && z >= 12.5) || (cls === 'service' && z >= 14)) {
-        add('minor', 'line', C.minor, lw(z, 12.5, 0.4, 0.25, 1.8), null, g);
+        const mw = lw(z, 12.5, 0.4, 0.25, 1.8);
+        if (C.minorCasing && z >= 13) add('minor_casing', 'line', C.minorCasing, mw + 0.6, null, g);
+        add('minor', 'line', C.minor, mw, null, g);
       } else if ((cls === 'rail' || cls === 'transit') && z >= 10 && p.brunnel !== 'tunnel') {
         add('rail', 'line', C.rail, 0.6, null, g);
       }
@@ -144,23 +174,23 @@ function styleFeatures(tiles, z, project) {
     });
   }
   // Painter's order (Positron): ground → water → roads → boundaries.
-  const PAINT = ['ice', 'residential', 'wood', 'park', 'water', 'stream', 'river', 'aeroway', 'minor', 'major_low', 'motorway_low',
+  const PAINT = ['ice', 'residential', 'wood', 'park', 'water', 'stream', 'river', 'aeroway', 'minor_casing', 'minor', 'major_low', 'motorway_low',
     'rail', 'major_casing', 'motorway_casing', 'major_inner', 'motorway_inner', 'boundary4', 'boundary2'];
   return PAINT.filter((id) => L[id] && L[id].rings.length).map((id) => L[id]);
 }
 
 const PLACE = {
-  country: { size: 9, bold: true, color: C.labelSoft, prio: 0, minZ: 0, maxZ: 7 },
-  state: { size: 7, bold: false, color: C.labelSoft, prio: 4, minZ: 4.5, maxZ: 9 },
-  city: { size: 8.5, bold: true, color: C.label, prio: 1, minZ: 3, maxZ: 22 },
-  town: { size: 7.5, bold: false, color: C.label, prio: 2, minZ: 6.5, maxZ: 22 },
-  village: { size: 6.8, bold: false, color: C.labelSoft, prio: 3, minZ: 10, maxZ: 22 },
-  suburb: { size: 6.6, bold: false, color: C.labelSuburb, prio: 5, minZ: 11.5, maxZ: 22 },
-  quarter: { size: 6.4, bold: false, color: C.labelSuburb, prio: 6, minZ: 13, maxZ: 22 },
-  neighbourhood: { size: 6.2, bold: false, color: C.labelSuburb, prio: 7, minZ: 14, maxZ: 22 },
+  country: { size: 9, bold: true, color: 'labelSoft', prio: 0, minZ: 0, maxZ: 7 },
+  state: { size: 7, bold: false, color: 'labelSoft', prio: 4, minZ: 4.5, maxZ: 9 },
+  city: { size: 8.5, bold: true, color: 'label', prio: 1, minZ: 3, maxZ: 22 },
+  town: { size: 7.5, bold: false, color: 'label', prio: 2, minZ: 6.5, maxZ: 22 },
+  village: { size: 6.8, bold: false, color: 'labelSoft', prio: 3, minZ: 10, maxZ: 22 },
+  suburb: { size: 6.6, bold: false, color: 'labelSuburb', prio: 5, minZ: 11.5, maxZ: 22 },
+  quarter: { size: 6.4, bold: false, color: 'labelSuburb', prio: 6, minZ: 13, maxZ: 22 },
+  neighbourhood: { size: 6.2, bold: false, color: 'labelSuburb', prio: 7, minZ: 14, maxZ: 22 },
 };
 
-function collectLabels(tiles, z, lang, pdf, project, w, h, scale) {
+function collectLabels(tiles, z, lang, pdf, project, w, h, scale, C) {
   const out = [];
   for (const t of tiles) {
     for (const f of (t.layers.place && t.layers.place.features) || []) {
@@ -172,7 +202,7 @@ function collectLabels(tiles, z, lang, pdf, project, w, h, scale) {
       const [[pt]] = project(t, [f.geom[0]], false);
       if (!pt || pt[0] < 4 || pt[1] < 6 || pt[0] > w - 4 || pt[1] > h - 4) continue;
       const capital = f.props.capital === 2;
-      out.push({ x: pt[0], y: pt[1], text, size: (st.size + (capital ? 0.5 : 0)) * scale, bold: st.bold, color: st.color, prio: st.prio - (capital ? 0.5 : 0) + (f.props.rank || 0) / 100 });
+      out.push({ x: pt[0], y: pt[1], text, size: (st.size + (capital ? 0.5 : 0)) * scale, bold: st.bold, color: C[st.color], prio: st.prio - (capital ? 0.5 : 0) + (f.props.rank || 0) / 100 });
     }
     for (const f of (t.layers.water_name && t.layers.water_name.features) || []) {
       if (f.type !== 1) continue;
@@ -199,6 +229,7 @@ function collectLabels(tiles, z, lang, pdf, project, w, h, scale) {
  * Render the Positron basemap for a buildMap() model.
  * @param opts.lang   TREK language code for label names
  * @param opts.pdf    true → only names the bundled PDF fonts can draw
+ * @param opts.style  one of STYLE_IDS (default positron)
  * @param opts.labelScale  label size multiplier
  * @param opts.measure  (text, size, bold) => width, for label collision boxes
  * @param opts.reserved  [[x0,y0,x1,y1]] boxes labels must avoid (route markers)
@@ -206,6 +237,7 @@ function collectLabels(tiles, z, lang, pdf, project, w, h, scale) {
  */
 async function renderBasemap(model, opts = {}) {
   const { view, w, h } = model;
+  const C = STYLES[opts.style] || STYLES.positron;
   const viewZoom = Math.log2((view.k * 2 * Math.PI) / 512);
   let z = Math.max(0, Math.min(14, Math.floor(viewZoom + 0.35)));
   let range;
@@ -253,12 +285,12 @@ async function renderBasemap(model, opts = {}) {
   };
   // Cull whole rings that are entirely off-canvas.
   const onCanvas = (ring) => { const m = 8; return ring.some(([x, y]) => x > -m && y > -m && x < w + m && y < h + m) || ring.length > 2 && spans(ring, w, h); };
-  const layers = styleFeatures(tiles, viewZoom, (t, g, closed) => project(t, g, closed).filter(onCanvas));
+  const layers = styleFeatures(tiles, viewZoom, (t, g, closed) => project(t, g, closed).filter(onCanvas), C);
 
   const measure = opts.measure || ((s, size) => s.length * size * 0.55);
   const boxes = (opts.reserved || []).slice();
   const labels = [];
-  for (const l of collectLabels(tiles, viewZoom, opts.lang || 'en', !!opts.pdf, (t, g) => project(t, g, false), w, h, opts.labelScale || 1)) {
+  for (const l of collectLabels(tiles, viewZoom, opts.lang || 'en', !!opts.pdf, (t, g) => project(t, g, false), w, h, opts.labelScale || 1, C)) {
     const tw = measure(l.text, l.size, l.bold);
     const box = [l.x - tw / 2 - 2, l.y - l.size * 0.85, l.x + tw / 2 + 2, l.y + l.size * 0.35];
     if (box[0] < 2 || box[2] > w - 2) continue;
@@ -266,7 +298,7 @@ async function renderBasemap(model, opts = {}) {
     boxes.push(box);
     labels.push({ ...l, y: l.y + l.size * 0.3 });
   }
-  return { background: C.background, layers, labels, attribution: ATTRIBUTION };
+  return { background: C.background, halo: C.halo, layers, labels, attribution: ATTRIBUTION };
 }
 
 /** A big polygon whose vertices are all off-canvas can still cover it (e.g. a sea). */
@@ -281,10 +313,11 @@ function toSvg(base) {
   const d = (rings, closed) => rings.map((r) => 'M' + r.map(([x, y]) => `${x} ${y}`).join('L') + (closed ? 'Z' : '')).join('');
   return {
     background: base.background,
+    halo: base.halo,
     attribution: base.attribution,
     layers: base.layers.map((l) => ({ kind: l.kind, color: l.color, width: l.width, dash: l.dash, d: d(l.rings, l.kind === 'fill') })),
     labels: base.labels.map(({ x, y, text, size, bold, color }) => ({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, text, size, bold, color })),
   };
 }
 
-module.exports = { renderBasemap, toSvg, ATTRIBUTION, HOST };
+module.exports = { renderBasemap, toSvg, ATTRIBUTION, HOST, STYLE_IDS, STYLES };

@@ -132,3 +132,17 @@ test('basemap route returns null when the background is turned off', async () =>
   assert.strictEqual(status, 200);
   assert.strictEqual(body.basemap, null);
 });
+
+test('basemap route validates an explicit view; unknown styles fall back', async () => {
+  const on = createMockHost({ ...structuredClone(fixtures), grants: GRANTS, config: { basemap: true, map_style: 'bright' } });
+  for (const view of [{ cx: 9, cy: 0, k: 1000 }, { cx: 0, cy: 0, k: 'x' }, { cx: 0, cy: NaN, k: 1000 }]) {
+    const r = await call(on.ctx, '/basemap', { view });
+    assert.strictEqual(r.status, 400, JSON.stringify(view));
+  }
+  const s = await call(on.ctx, '/summary', { tripId: 1 });
+  assert.deepStrictEqual(s.body.styles, ['positron', 'bright', 'liberty', 'dark', 'fiord']);
+  assert.strictEqual(s.body.style, 'bright'); // admin default
+  const m = s.body.map.markers.find((k) => k.n === 1);
+  assert.ok(Number.isFinite(m.lat) && Number.isFinite(m.lng), 'markers carry lat/lng for client-side zoom');
+  assert.ok(s.body.map.routes.every((r) => r.ll.length === r.points.length));
+});
