@@ -24,6 +24,7 @@
     .map .label { font-size: 10px; font-weight: 600; fill: #111827; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
     .map .base-label { paint-order: stroke; stroke-linejoin: round; } /* halo colour comes from the style */
     .map .attr { font-size: 9px; fill: #4b5563; }
+    .map .attr-badge { cursor: pointer; }
     .maphead { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
     .stylepick { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
     .stylepick select { width: auto; padding: 4px 8px; font-size: 13px; }
@@ -84,6 +85,7 @@
         <div class="trek-card" style="padding: 14px">
           <div class="trek-sectionhead" data-i18n="include">Include</div>
           <label class="opt"><input type="checkbox" name="section" value="map" checked /><span><span data-i18n="mapOverview">Map overview</span><small data-i18n="mapHint">Whole trip + a map per day</small></span></label>
+          <label class="opt"><input type="checkbox" name="section" value="timeline" checked /><span><span data-i18n="timeline">Timeline</span><small data-i18n="timelineHint">Each day hour by hour</small></span></label>
           <label class="opt"><input type="checkbox" name="section" value="itinerary" checked /><span><span data-i18n="itinerary">Itinerary</span><small data-i18n="itineraryHint">Day by day stops, times and notes</small></span></label>
           <label class="opt"><input type="checkbox" name="section" value="lodging" checked /><span><span data-i18n="accommodation">Accommodation</span><small id="lodging-hint" data-i18n="accommodationHint">Check-in, check-out, nights</small></span></label>
           <label class="opt" id="costs-opt"><input type="checkbox" name="section" value="costs" checked /><span><span data-i18n="costs">Costs</span><small id="costs-hint" data-i18n="costsHint">Totals by category + every expense</small></span></label>
@@ -249,6 +251,7 @@
         gBase.dataset.attribution = b.attribution;
       }
 
+      var attrOpen = false; // map credit badge expanded?
       function redraw() {
         if (!svg) return;
         // Stale basemap → transform it from the view it was rendered for to the current one.
@@ -291,9 +294,18 @@
         el('polyline', { points: [sx, sy - 4, sx, sy, sx + sb.len, sy, sx + sb.len, sy - 4].join(' '), fill: 'none', stroke: '#111827', 'stroke-width': 1.5 }, gTop);
         el('text', { x: sx + sb.len / 2, y: sy - 6, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 600, fill: '#111827' }, gTop).textContent = sb.label;
         if (gBase.dataset.attribution) {
-          var attr = gBase.dataset.attribution;
-          el('rect', { x: 0, y: M.h - 14, width: attr.length * 5.1 + 10, height: 14, fill: '#ffffff', opacity: 0.85 }, gTop);
-          el('text', { x: 4, y: M.h - 4, class: 'attr' }, gTop).textContent = attr;
+          // Map credit as a small © badge; hover shows it, a click spells it out.
+          var attr = '© ' + gBase.dataset.attribution.replace(/^© /, ''), open = attrOpen;
+          var badge = el('g', { class: 'attr-badge', role: 'button', tabindex: 0, 'aria-label': attr }, gTop);
+          el('title', {}, badge).textContent = attr;
+          el('rect', { x: 2, y: M.h - 16, width: open ? attr.length * 5.1 + 10 : 14, height: 14, rx: 7, fill: '#ffffff', opacity: 0.85 }, badge);
+          el('text', { x: open ? 6 : 9, y: M.h - 6, class: 'attr', 'text-anchor': open ? 'start' : 'middle' }, badge).textContent = open ? attr : '©';
+          var toggle = function (e) { if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return; e.preventDefault(); e.stopPropagation(); attrOpen = !attrOpen; redraw(); };
+          badge.addEventListener('click', toggle);
+          badge.addEventListener('keydown', toggle);
+          badge.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+          badge.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+          badge.addEventListener('dblclick', function (e) { e.stopPropagation(); });
         }
       }
 

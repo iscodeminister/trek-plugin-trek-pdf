@@ -16,6 +16,7 @@ const PDF_FALLBACK = new Set(['ar', 'he']);
 
 const S = {
   en: {
+    timeline: 'Timeline', timelineHint: 'Each day hour by hour', noTime: 'No set time',
     tripReport: 'Trip report', generated: 'Generated {date}', days: 'Days', plannedStops: 'Planned stops', places: 'Places',
     stays: 'Stays', totalCost: 'Total cost', mapOverview: 'Map overview', itinerary: 'Itinerary', accommodation: 'Accommodation',
     costs: 'Costs', dayN: 'Day {n}', nothingPlanned: 'Nothing planned yet.', noDays: 'No days planned yet.',
@@ -37,6 +38,7 @@ const S = {
     nStays: { one: '{n} stay', other: '{n} stays' }, nExpenses: { one: '{n} expense', other: '{n} expenses' },
   },
   de: {
+    timeline: 'Zeitplan', timelineHint: 'Jeder Tag nach Uhrzeit', noTime: 'Ohne Uhrzeit',
     tripReport: 'Reisebericht', generated: 'Erstellt am {date}', days: 'Tage', plannedStops: 'Geplante Stopps', places: 'Orte',
     stays: 'Unterkünfte', totalCost: 'Gesamtkosten', mapOverview: 'Kartenübersicht', itinerary: 'Reiseplan', accommodation: 'Unterkünfte',
     costs: 'Kosten', dayN: 'Tag {n}', nothingPlanned: 'Noch nichts geplant.', noDays: 'Noch keine Tage geplant.',
@@ -58,6 +60,7 @@ const S = {
     nStays: { one: '{n} Unterkunft', other: '{n} Unterkünfte' }, nExpenses: { one: '{n} Ausgabe', other: '{n} Ausgaben' },
   },
   es: {
+    timeline: 'Cronograma', timelineHint: 'Cada día hora a hora', noTime: 'Sin hora',
     tripReport: 'Informe del viaje', generated: 'Generado el {date}', days: 'Días', plannedStops: 'Paradas planificadas', places: 'Lugares',
     stays: 'Estancias', totalCost: 'Coste total', mapOverview: 'Mapa general', itinerary: 'Itinerario', accommodation: 'Alojamiento',
     costs: 'Gastos', dayN: 'Día {n}', nothingPlanned: 'Aún no hay nada planificado.', noDays: 'Aún no hay días planificados.',
@@ -79,6 +82,7 @@ const S = {
     nStays: { one: '{n} estancia', other: '{n} estancias' }, nExpenses: { one: '{n} gasto', other: '{n} gastos' },
   },
   et: {
+    timeline: 'Ajajoon', timelineHint: 'Iga päev tundide kaupa', noTime: 'Kellaajata',
     tripReport: 'Reisiaruanne', generated: 'Koostatud {date}', days: 'Päevad', plannedStops: 'Planeeritud peatused', places: 'Kohad',
     stays: 'Majutused', totalCost: 'Kogukulu', mapOverview: 'Kaardi ülevaade', itinerary: 'Marsruut', accommodation: 'Majutus',
     costs: 'Kulud', dayN: '{n}. päev', nothingPlanned: 'Midagi pole veel planeeritud.', noDays: 'Päevi pole veel planeeritud.',
@@ -100,6 +104,7 @@ const S = {
     nStays: { one: '{n} majutus', other: '{n} majutust' }, nExpenses: { one: '{n} kulu', other: '{n} kulu' },
   },
   fr: {
+    timeline: 'Chronologie', timelineHint: 'Chaque jour heure par heure', noTime: 'Sans horaire',
     tripReport: 'Rapport de voyage', generated: 'Généré le {date}', days: 'Jours', plannedStops: 'Étapes prévues', places: 'Lieux',
     stays: 'Séjours', totalCost: 'Coût total', mapOverview: 'Vue d’ensemble', itinerary: 'Itinéraire', accommodation: 'Hébergement',
     costs: 'Dépenses', dayN: 'Jour {n}', nothingPlanned: 'Rien de prévu pour l’instant.', noDays: 'Aucun jour planifié pour l’instant.',
@@ -121,6 +126,7 @@ const S = {
     nStays: { one: '{n} séjour', other: '{n} séjours' }, nExpenses: { one: '{n} dépense', other: '{n} dépenses' },
   },
   hu: {
+    timeline: 'Idővonal', timelineHint: 'Minden nap óránként', noTime: 'Nincs időpont',
     tripReport: 'Úti jelentés', generated: 'Készült: {date}', days: 'Napok', plannedStops: 'Tervezett megállók', places: 'Helyek',
     stays: 'Szállások', totalCost: 'Teljes költség', mapOverview: 'Térképes áttekintés', itinerary: 'Útiterv', accommodation: 'Szállás',
     costs: 'Költségek', dayN: '{n}. nap', nothingPlanned: 'Még nincs semmi tervezve.', noDays: 'Még nincsenek tervezett napok.',
@@ -141,6 +147,7 @@ const S = {
     nDays: { other: '{n} nap' }, nStops: { other: '{n} megálló' }, nStays: { other: '{n} szállás' }, nExpenses: { other: '{n} kiadás' },
   },
   nl: {
+    timeline: 'Tijdlijn', timelineHint: 'Elke dag per uur', noTime: 'Geen tijd',
     tripReport: 'Reisverslag', generated: 'Gemaakt op {date}', days: 'Dagen', plannedStops: 'Geplande stops', places: 'Plaatsen',
     stays: 'Verblijven', totalCost: 'Totale kosten', mapOverview: 'Kaartoverzicht', itinerary: 'Reisschema', accommodation: 'Verblijf',
     costs: 'Kosten', dayN: 'Dag {n}', nothingPlanned: 'Nog niets gepland.', noDays: 'Nog geen dagen gepland.',
@@ -162,6 +169,7 @@ const S = {
     nStays: { one: '{n} verblijf', other: '{n} verblijven' }, nExpenses: { one: '{n} uitgave', other: '{n} uitgaven' },
   },
   br: {
+    timeline: 'Linha do tempo', timelineHint: 'Cada dia hora a hora', noTime: 'Sem horário',
     tripReport: 'Relatório da viagem', generated: 'Gerado em {date}', days: 'Dias', plannedStops: 'Paradas planejadas', places: 'Lugares',
     stays: 'Hospedagens', totalCost: 'Custo total', mapOverview: 'Visão geral do mapa', itinerary: 'Roteiro', accommodation: 'Hospedagem',
     costs: 'Despesas', dayN: 'Dia {n}', nothingPlanned: 'Nada planejado ainda.', noDays: 'Nenhum dia planejado ainda.',
@@ -183,6 +191,7 @@ const S = {
     nStays: { one: '{n} hospedagem', other: '{n} hospedagens' }, nExpenses: { one: '{n} despesa', other: '{n} despesas' },
   },
   cs: {
+    timeline: 'Časová osa', timelineHint: 'Každý den po hodinách', noTime: 'Bez času',
     tripReport: 'Zpráva o cestě', generated: 'Vytvořeno {date}', days: 'Dny', plannedStops: 'Plánované zastávky', places: 'Místa',
     stays: 'Ubytování', totalCost: 'Celkové náklady', mapOverview: 'Přehledová mapa', itinerary: 'Itinerář', accommodation: 'Ubytování',
     costs: 'Výdaje', dayN: 'Den {n}', nothingPlanned: 'Zatím nic naplánováno.', noDays: 'Zatím žádné naplánované dny.',
@@ -206,6 +215,7 @@ const S = {
     nExpenses: { one: '{n} výdaj', few: '{n} výdaje', many: '{n} výdaje', other: '{n} výdajů' },
   },
   sk: {
+    timeline: 'Časová os', timelineHint: 'Každý deň po hodinách', noTime: 'Bez času',
     tripReport: 'Správa o ceste', generated: 'Vytvorené {date}', days: 'Dni', plannedStops: 'Plánované zastávky', places: 'Miesta',
     stays: 'Ubytovania', totalCost: 'Celkové náklady', mapOverview: 'Prehľadová mapa', itinerary: 'Itinerár', accommodation: 'Ubytovanie',
     costs: 'Výdavky', dayN: 'Deň {n}', nothingPlanned: 'Zatiaľ nič naplánované.', noDays: 'Zatiaľ žiadne naplánované dni.',
@@ -229,6 +239,7 @@ const S = {
     nExpenses: { one: '{n} výdavok', few: '{n} výdavky', many: '{n} výdavku', other: '{n} výdavkov' },
   },
   pl: {
+    timeline: 'Oś czasu', timelineHint: 'Każdy dzień godzina po godzinie', noTime: 'Bez godziny',
     tripReport: 'Raport z podróży', generated: 'Wygenerowano {date}', days: 'Dni', plannedStops: 'Zaplanowane przystanki', places: 'Miejsca',
     stays: 'Noclegi', totalCost: 'Koszt całkowity', mapOverview: 'Mapa przeglądowa', itinerary: 'Plan podróży', accommodation: 'Noclegi',
     costs: 'Wydatki', dayN: 'Dzień {n}', nothingPlanned: 'Nic jeszcze nie zaplanowano.', noDays: 'Brak zaplanowanych dni.',
@@ -252,6 +263,7 @@ const S = {
     nExpenses: { one: '{n} wydatek', few: '{n} wydatki', many: '{n} wydatków', other: '{n} wydatku' },
   },
   ru: {
+    timeline: 'Хронология', timelineHint: 'Каждый день по часам', noTime: 'Без времени',
     tripReport: 'Отчёт о поездке', generated: 'Создано {date}', days: 'Дни', plannedStops: 'Запланированные остановки', places: 'Места',
     stays: 'Проживание', totalCost: 'Общие расходы', mapOverview: 'Обзорная карта', itinerary: 'Маршрут', accommodation: 'Проживание',
     costs: 'Расходы', dayN: 'День {n}', nothingPlanned: 'Пока ничего не запланировано.', noDays: 'Дни пока не запланированы.',
@@ -275,6 +287,7 @@ const S = {
     nExpenses: { one: '{n} расход', few: '{n} расхода', many: '{n} расходов', other: '{n} расхода' },
   },
   uk: {
+    timeline: 'Хронологія', timelineHint: 'Кожен день по годинах', noTime: 'Без часу',
     tripReport: 'Звіт про подорож', generated: 'Створено {date}', days: 'Дні', plannedStops: 'Заплановані зупинки', places: 'Місця',
     stays: 'Проживання', totalCost: 'Загальні витрати', mapOverview: 'Оглядова карта', itinerary: 'Маршрут', accommodation: 'Проживання',
     costs: 'Витрати', dayN: 'День {n}', nothingPlanned: 'Поки нічого не заплановано.', noDays: 'Дні поки не заплановані.',
@@ -298,6 +311,7 @@ const S = {
     nExpenses: { one: '{n} витрата', few: '{n} витрати', many: '{n} витрат', other: '{n} витрати' },
   },
   zh: {
+    timeline: '时间线', timelineHint: '每日逐小时安排', noTime: '未定时间',
     tripReport: '行程报告', generated: '生成于 {date}', days: '天数', plannedStops: '计划站点', places: '地点',
     stays: '住宿', totalCost: '总费用', mapOverview: '地图总览', itinerary: '行程', accommodation: '住宿',
     costs: '费用', dayN: '第 {n} 天', nothingPlanned: '尚未安排。', noDays: '尚未规划任何日期。',
@@ -318,6 +332,7 @@ const S = {
     nDays: { other: '{n} 天' }, nStops: { other: '{n} 个站点' }, nStays: { other: '{n} 处住宿' }, nExpenses: { other: '{n} 笔支出' },
   },
   'zh-TW': {
+    timeline: '時間軸', timelineHint: '每日逐小時安排', noTime: '未定時間',
     tripReport: '行程報告', generated: '產生於 {date}', days: '天數', plannedStops: '計畫停留點', places: '地點',
     stays: '住宿', totalCost: '總費用', mapOverview: '地圖總覽', itinerary: '行程', accommodation: '住宿',
     costs: '費用', dayN: '第 {n} 天', nothingPlanned: '尚未安排。', noDays: '尚未規劃任何日期。',
@@ -338,6 +353,7 @@ const S = {
     nDays: { other: '{n} 天' }, nStops: { other: '{n} 個停留點' }, nStays: { other: '{n} 處住宿' }, nExpenses: { other: '{n} 筆支出' },
   },
   it: {
+    timeline: 'Cronologia', timelineHint: 'Ogni giorno ora per ora', noTime: 'Senza orario',
     tripReport: 'Resoconto del viaggio', generated: 'Generato il {date}', days: 'Giorni', plannedStops: 'Tappe pianificate', places: 'Luoghi',
     stays: 'Soggiorni', totalCost: 'Costo totale', mapOverview: 'Mappa d’insieme', itinerary: 'Itinerario', accommodation: 'Alloggio',
     costs: 'Spese', dayN: 'Giorno {n}', nothingPlanned: 'Ancora nulla in programma.', noDays: 'Nessun giorno pianificato.',
@@ -359,6 +375,7 @@ const S = {
     nStays: { one: '{n} soggiorno', other: '{n} soggiorni' }, nExpenses: { one: '{n} spesa', other: '{n} spese' },
   },
   tr: {
+    timeline: 'Zaman çizelgesi', timelineHint: 'Her gün saat saat', noTime: 'Saat yok',
     tripReport: 'Seyahat raporu', generated: 'Oluşturma: {date}', days: 'Günler', plannedStops: 'Planlanan duraklar', places: 'Yerler',
     stays: 'Konaklamalar', totalCost: 'Toplam maliyet', mapOverview: 'Harita özeti', itinerary: 'Program', accommodation: 'Konaklama',
     costs: 'Harcamalar', dayN: '{n}. gün', nothingPlanned: 'Henüz plan yok.', noDays: 'Henüz planlanmış gün yok.',
@@ -379,6 +396,7 @@ const S = {
     nDays: { other: '{n} gün' }, nStops: { other: '{n} durak' }, nStays: { other: '{n} konaklama' }, nExpenses: { other: '{n} harcama' },
   },
   ar: {
+    timeline: 'الجدول الزمني', timelineHint: 'كل يوم ساعة بساعة', noTime: 'بدون وقت',
     tripReport: 'تقرير الرحلة', generated: 'أُنشئ في {date}', days: 'الأيام', plannedStops: 'المحطات المخططة', places: 'الأماكن',
     stays: 'الإقامات', totalCost: 'التكلفة الإجمالية', mapOverview: 'نظرة عامة على الخريطة', itinerary: 'خط السير', accommodation: 'الإقامة',
     costs: 'التكاليف', dayN: 'اليوم {n}', nothingPlanned: 'لا شيء مخطط بعد.', noDays: 'لا توجد أيام مخططة بعد.',
@@ -402,6 +420,7 @@ const S = {
     nExpenses: { zero: '{n} مصروف', one: 'مصروف واحد', two: 'مصروفان', few: '{n} مصروفات', many: '{n} مصروفًا', other: '{n} مصروف' },
   },
   az: {
+    timeline: 'Zaman xətti', timelineHint: 'Hər gün saat-saat', noTime: 'Vaxt yoxdur',
     tripReport: 'Səyahət hesabatı', generated: 'Yaradılıb: {date}', days: 'Günlər', plannedStops: 'Planlaşdırılmış dayanacaqlar', places: 'Yerlər',
     stays: 'Yerləşmələr', totalCost: 'Ümumi xərc', mapOverview: 'Xəritə icmalı', itinerary: 'Marşrut', accommodation: 'Yerləşmə',
     costs: 'Xərclər', dayN: '{n}-ci gün', nothingPlanned: 'Hələ heç nə planlaşdırılmayıb.', noDays: 'Hələ planlaşdırılmış gün yoxdur.',
@@ -422,6 +441,7 @@ const S = {
     nDays: { other: '{n} gün' }, nStops: { other: '{n} dayanacaq' }, nStays: { other: '{n} yerləşmə' }, nExpenses: { other: '{n} xərc' },
   },
   he: {
+    timeline: 'ציר זמן', timelineHint: 'כל יום לפי שעות', noTime: 'ללא שעה',
     tripReport: 'דוח טיול', generated: 'נוצר ב־{date}', days: 'ימים', plannedStops: 'עצירות מתוכננות', places: 'מקומות',
     stays: 'לינות', totalCost: 'עלות כוללת', mapOverview: 'מפת סקירה', itinerary: 'מסלול', accommodation: 'לינה',
     costs: 'הוצאות', dayN: 'יום {n}', nothingPlanned: 'עדיין לא תוכנן דבר.', noDays: 'עדיין אין ימים מתוכננים.',
@@ -443,6 +463,7 @@ const S = {
     nStays: { one: 'לינה אחת', other: '{n} לינות' }, nExpenses: { one: 'הוצאה אחת', other: '{n} הוצאות' },
   },
   id: {
+    timeline: 'Linimasa', timelineHint: 'Setiap hari per jam', noTime: 'Tanpa waktu',
     tripReport: 'Laporan perjalanan', generated: 'Dibuat {date}', days: 'Hari', plannedStops: 'Perhentian terencana', places: 'Tempat',
     stays: 'Penginapan', totalCost: 'Total biaya', mapOverview: 'Ikhtisar peta', itinerary: 'Rencana perjalanan', accommodation: 'Penginapan',
     costs: 'Biaya', dayN: 'Hari {n}', nothingPlanned: 'Belum ada rencana.', noDays: 'Belum ada hari yang direncanakan.',
@@ -463,6 +484,7 @@ const S = {
     nDays: { other: '{n} hari' }, nStops: { other: '{n} perhentian' }, nStays: { other: '{n} penginapan' }, nExpenses: { other: '{n} pengeluaran' },
   },
   ja: {
+    timeline: 'タイムライン', timelineHint: '各日の時間ごとの予定', noTime: '時間未定',
     tripReport: '旅行レポート', generated: '{date} 作成', days: '日数', plannedStops: '予定の訪問先', places: 'スポット',
     stays: '宿泊', totalCost: '合計費用', mapOverview: 'マップ概要', itinerary: '旅程', accommodation: '宿泊',
     costs: '費用', dayN: '{n}日目', nothingPlanned: 'まだ予定がありません。', noDays: 'まだ日程がありません。',
@@ -483,6 +505,7 @@ const S = {
     nDays: { other: '{n}日' }, nStops: { other: '{n}か所' }, nStays: { other: '宿泊 {n}件' }, nExpenses: { other: '支出 {n}件' },
   },
   ko: {
+    timeline: '타임라인', timelineHint: '날짜별 시간대 일정', noTime: '시간 미정',
     tripReport: '여행 보고서', generated: '{date} 생성', days: '일수', plannedStops: '계획된 방문지', places: '장소',
     stays: '숙소', totalCost: '총비용', mapOverview: '지도 개요', itinerary: '일정', accommodation: '숙소',
     costs: '비용', dayN: '{n}일차', nothingPlanned: '아직 계획이 없습니다.', noDays: '아직 계획된 날이 없습니다.',
@@ -503,6 +526,7 @@ const S = {
     nDays: { other: '{n}일' }, nStops: { other: '방문지 {n}곳' }, nStays: { other: '숙소 {n}곳' }, nExpenses: { other: '지출 {n}건' },
   },
   th: {
+    timeline: 'ไทม์ไลน์', timelineHint: 'แต่ละวันแบบรายชั่วโมง', noTime: 'ไม่ระบุเวลา',
     tripReport: 'รายงานการเดินทาง', generated: 'สร้างเมื่อ {date}', days: 'จำนวนวัน', plannedStops: 'จุดแวะที่วางแผนไว้', places: 'สถานที่',
     stays: 'ที่พัก', totalCost: 'ค่าใช้จ่ายรวม', mapOverview: 'ภาพรวมแผนที่', itinerary: 'แผนการเดินทาง', accommodation: 'ที่พัก',
     costs: 'ค่าใช้จ่าย', dayN: 'วันที่ {n}', nothingPlanned: 'ยังไม่มีแผน', noDays: 'ยังไม่มีวันที่วางแผนไว้',
@@ -523,6 +547,7 @@ const S = {
     nDays: { other: '{n} วัน' }, nStops: { other: '{n} จุดแวะ' }, nStays: { other: 'ที่พัก {n} แห่ง' }, nExpenses: { other: '{n} รายการ' },
   },
   gr: {
+    timeline: 'Χρονολόγιο', timelineHint: 'Κάθε μέρα ανά ώρα', noTime: 'Χωρίς ώρα',
     tripReport: 'Αναφορά ταξιδιού', generated: 'Δημιουργήθηκε {date}', days: 'Ημέρες', plannedStops: 'Προγραμματισμένες στάσεις', places: 'Μέρη',
     stays: 'Διαμονές', totalCost: 'Συνολικό κόστος', mapOverview: 'Επισκόπηση χάρτη', itinerary: 'Πρόγραμμα', accommodation: 'Διαμονή',
     costs: 'Έξοδα', dayN: 'Ημέρα {n}', nothingPlanned: 'Δεν υπάρχει ακόμη πρόγραμμα.', noDays: 'Δεν έχουν προγραμματιστεί ημέρες.',
@@ -544,6 +569,7 @@ const S = {
     nStays: { one: '{n} διαμονή', other: '{n} διαμονές' }, nExpenses: { one: '{n} έξοδο', other: '{n} έξοδα' },
   },
   sv: {
+    timeline: 'Tidslinje', timelineHint: 'Varje dag timme för timme', noTime: 'Ingen tid',
     tripReport: 'Reserapport', generated: 'Skapad {date}', days: 'Dagar', plannedStops: 'Planerade stopp', places: 'Platser',
     stays: 'Boenden', totalCost: 'Total kostnad', mapOverview: 'Kartöversikt', itinerary: 'Resplan', accommodation: 'Boende',
     costs: 'Kostnader', dayN: 'Dag {n}', nothingPlanned: 'Inget planerat än.', noDays: 'Inga dagar planerade än.',
@@ -565,6 +591,7 @@ const S = {
     nStays: { one: '{n} boende', other: '{n} boenden' }, nExpenses: { one: '{n} utgift', other: '{n} utgifter' },
   },
   vi: {
+    timeline: 'Dòng thời gian', timelineHint: 'Từng ngày theo giờ', noTime: 'Chưa định giờ',
     tripReport: 'Báo cáo chuyến đi', generated: 'Tạo ngày {date}', days: 'Số ngày', plannedStops: 'Điểm dừng đã lên kế hoạch', places: 'Địa điểm',
     stays: 'Chỗ ở', totalCost: 'Tổng chi phí', mapOverview: 'Tổng quan bản đồ', itinerary: 'Lịch trình', accommodation: 'Chỗ ở',
     costs: 'Chi phí', dayN: 'Ngày {n}', nothingPlanned: 'Chưa có kế hoạch.', noDays: 'Chưa có ngày nào được lên kế hoạch.',
@@ -585,6 +612,7 @@ const S = {
     nDays: { other: '{n} ngày' }, nStops: { other: '{n} điểm dừng' }, nStays: { other: '{n} chỗ ở' }, nExpenses: { other: '{n} khoản chi' },
   },
   ca: {
+    timeline: 'Cronologia', timelineHint: 'Cada dia hora a hora', noTime: 'Sense hora',
     tripReport: 'Informe del viatge', generated: 'Generat el {date}', days: 'Dies', plannedStops: 'Parades previstes', places: 'Llocs',
     stays: 'Estades', totalCost: 'Cost total', mapOverview: 'Mapa general', itinerary: 'Itinerari', accommodation: 'Allotjament',
     costs: 'Despeses', dayN: 'Dia {n}', nothingPlanned: 'Encara no hi ha res previst.', noDays: 'Encara no hi ha dies planificats.',

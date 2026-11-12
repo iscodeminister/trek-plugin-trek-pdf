@@ -38,7 +38,7 @@ test('report renders a well-formed PDF and saves it to trip files', async () => 
   const list = await h.ctx.files.list(1);
   assert.strictEqual(list.length, 1);
   assert.strictEqual(list[0].mimetype, 'application/pdf');
-  assert.match(list[0].name, /^Japan Summer 2026 - Trip report \d{4}-\d{2}-\d{2}\.pdf$/);
+  assert.match(list[0].name, /^Japan Summer 2026 - Trip report \d{4}-\d{2}-\d{2} \d{2}-\d{2}\.pdf$/);
 
   // Re-render to inspect the bytes (the mock doesn't keep content).
   const { loadTrip, renderPdf } = require('../server/report');
@@ -183,4 +183,26 @@ test('a long trip description is printed in full, not cut', async () => {
     drawn.push(l);
   }
   assert.strictEqual(drawn.length, 3);
+});
+
+test('timeline section draws the timed stops; it can be picked alone', async () => {
+  const { loadTrip, renderPdf, SECTIONS } = require('../server/report');
+  assert.ok(SECTIONS.includes('timeline'));
+  const h = createMockHost({ ...fixtures, grants: GRANTS });
+  const data = await loadTrip(h.ctx, 1, {});
+  const doc = await renderPdf(data, { sections: ['timeline'] });
+  const all = doc.pages.flat().join('\n');
+  const hex = (s, bold) => doc._runs(s, bold).map((r) => r.glyphs.map(([g]) => g.toString(16).padStart(4, '0')).join('')).join('');
+  assert.ok(all.includes(hex('Timeline', true)), 'heading drawn');
+  assert.ok(all.includes(hex('09:00', false)), 'hour axis drawn');
+  const res = await call(h.ctx, '/report', { tripId: 1, sections: ['timeline'] });
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+});
+
+test('file name and cover carry the creation time in the user time zone', async () => {
+  const { loadTrip, fileName } = require('../server/report');
+  const h = createMockHost({ ...fixtures, grants: GRANTS });
+  const data = await loadTrip(h.ctx, 1, { timeZone: 'Asia/Tokyo' });
+  data.generatedAt = new Date('2026-11-12T05:07:00Z');
+  assert.match(fileName(data), / 2026-11-12 14-07\.pdf$/);
 });

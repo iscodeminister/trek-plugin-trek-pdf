@@ -1,7 +1,6 @@
 'use strict';
 const { PdfDoc } = require('./pdf');
 const { covers: fontCovers } = require('./font');
-const { ATTRIBUTION } = require('./basemap');
 const { translator } = require('./i18n');
 
 const DAY_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];
@@ -158,6 +157,7 @@ async function loadTrip(ctx, tripId, { lang = 'en', locale = 'en-US', currency, 
 
   return {
     id: trip.id,
+    generatedAt: new Date(), // one instant for the cover line and the file name
     title: str(trip.title, trip.name) || t('trip'),
     t,
     lang,
@@ -280,7 +280,8 @@ function buildMap(data, w, h, opts = {}) {
 
 // ---------------------------------------------------------------- PDF layout
 
-const SECTIONS = ['map', 'itinerary', 'lodging', 'costs'];
+const SECTIONS = ['map', 'timeline', 'itinerary', 'lodging', 'costs'];
+const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Math.min(24 * 60, +m[1] * 60 + +m[2]) : null; };
 
 /**
  * @param opts.basemap  async (mapModel, { labelScale, measure, reserved }) => basemap|null —
@@ -333,7 +334,7 @@ async function renderPdf(data, opts = {}) {
   titleLines.forEach((l, i) => doc.text(l, M, 72 + i * 28, { size: 26, bold: true, color: '#ffffff' }));
   const subtitle = [data.dateRange, data.duration ? t.n('nDays', data.duration) : ''].filter(Boolean).join('   ·   ');
   doc.text(subtitle || t('noDates'), M, 72 + titleLines.length * 28, { size: 10.5, color: '#cbd5e1' });
-  doc.text(t('generated', { date: fmtDate(new Date(), data.locale, { day: 'numeric', month: 'short', year: 'numeric', ...(data.timeZone ? { timeZone: data.timeZone } : {}) }) }), M + W, 40, { size: 8.5, color: '#94a3b8', align: 'right' });
+  doc.text(t('generated', { date: new Intl.DateTimeFormat(data.locale, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', ...(data.timeZone ? { timeZone: data.timeZone } : {}) }).format(data.generatedAt || new Date()) }), M + W, 40, { size: 8.5, color: '#94a3b8', align: 'right' });
   y = HEAD + 24;
 
   // ---- stat tiles
@@ -385,6 +386,64 @@ async function renderPdf(data, opts = {}) {
       doc.text(label, lx + 12, y, { size: 8, color: MUTED });
     }
     y += 22;
+  }
+
+  // ---- timeline: each day's stops on an hour axis.
+  if (sections.has('timeline') && data.days.length) {
+    heading(t('timeline'), data.dateRange, 90);
+    const LW = 78, GX = M + LW, GW = W - LW, n = data.days.length;
+
+    // Hour grid: the planned stops' times (an open-ended stop runs until the next one, 1 h at most).
+    const rows = data.days.map((d) => {
+      const timed = [], loose = [];
+      d.stops.forEach((s, i) => { const a = toMin(s.time); if (a === null) loose.push(s.name); else timed.push({ i, name: s.name, a, e: toMin(s.endTime) }); });
+      timed.sort((p, q) => p.a - q.a);
+      timed.forEach((s, k) => {
+        const next = timed[k + 1] ? timed[k + 1].a : 24 * 60;
+        if (s.e === null || s.e <= s.a) s.e = Math.min(s.a + 60, Math.max(next, s.a + 30));
+      });
+      return { d, timed, loose };
+    });
+    const all = rows.flatMap((r) => r.timed);
+    let h0 = 8, h1 = 20;
+    if (all.length) {
+      h0 = Math.max(0, Math.min(h0, Math.floor(Math.min(...all.map((s) => s.a)) / 60)));
+      h1 = Math.min(24, Math.max(h1, Math.ceil(Math.max(...all.map((s) => s.e)) / 60)));
+    }
+    const step = h1 - h0 > 12 ? 2 : 1;
+    const xOf = (min) => GX + ((min - h0 * 60) / ((h1 - h0) * 60)) * GW;
+    const axis = () => {
+      for (let hr = h0; hr <= h1; hr += step) doc.text(`${String(hr).padStart(2, '0')}:00`, xOf(hr * 60), y + 8, { size: 6.5, color: FAINT, align: hr === h0 ? 'left' : hr === h1 ? 'right' : 'center' });
+      y += 13;
+    };
+    ensure(13 + 26 * Math.min(3, rows.length)); axis();
+    for (const { d, timed, loose } of rows) {
+      const RH = 22 + (loose.length ? 11 : 0);
+      if (ensure(RH + 4)) axis();
+      doc.fill('#f9fafb').rect(GX, y, GW, 22);
+      doc.stroke(LINE).lineWidth(0.5);
+      for (let hr = h0; hr <= h1; hr += step) doc.line(xOf(hr * 60), y, xOf(hr * 60), y + 22);
+      doc.fill(d.color).circle(M + 4, y + 8, 3.5);
+      doc.text(doc.fit(t('dayN', { n: d.index + 1 }), LW - 16, 8.5, true), M + 12, y + 11, { size: 8.5, bold: true, color: INK });
+      if (d.label) doc.text(doc.fit(d.label, LW - 16, 7), M + 12, y + 20, { size: 7, color: MUTED });
+      timed.forEach((s, k) => {
+        const x1 = xOf(s.a), bw = Math.max(3, Math.min(xOf(s.e), GX + GW) - x1);
+        doc.fill('#ffffff').roundRect(x1 - 0.6, y + 2.4, bw + 1.2, 17.2, 3.4);
+        doc.fill(d.color).roundRect(x1, y + 3, bw, 16, 3);
+        // The name goes inside the bar when it fits, else beside it up to the next bar.
+        const full = `${s.i + 1} ${s.name}`, room = (timed[k + 1] ? xOf(timed[k + 1].a) : GX + GW) - (x1 + bw) - 8;
+        if (doc.measure(full, 7, true) <= bw - 6) doc.text(full, x1 + 3, y + 13.5, { size: 7, bold: true, color: '#ffffff' });
+        else {
+          if (bw > 12) doc.text(String(s.i + 1), x1 + bw / 2, y + 13.5, { size: 7, bold: true, color: '#ffffff', align: 'center' });
+          const label = room > 20 ? doc.fit(s.name, room, 7, true) : '';
+          if (label) doc.text(label, x1 + bw + 4, y + 13.5, { size: 7, bold: true, color: INK });
+        }
+      });
+      if (!timed.length && !loose.length) doc.text(t('nothingPlanned'), GX + 6, y + 14, { size: 7.5, color: FAINT });
+      if (loose.length) doc.text(doc.fit(`${t('noTime')}: ${loose.join(' · ')}`, GW, 7), GX, y + 30, { size: 7, color: FAINT });
+      y += RH + 4;
+    }
+    y += 14;
   }
 
   // ---- itinerary
@@ -530,8 +589,17 @@ async function renderPdf(data, opts = {}) {
     : null)));
   slots.forEach((s, i) => {
     const b = bases[i];
-    const ops = b ? capture(doc, () => { paintBasemap(doc, b, s.ox, s.oy, s.map.w, s.map.h); s.attribution(b.attribution); }) : s.grid;
+    const ops = b ? capture(doc, () => paintBasemap(doc, b, s.ox, s.oy, s.map.w, s.map.h)) : s.grid;
     s.page[s.index] = ops.join('\n');
+  });
+  // Map credits: one line in the footer of each page that shows a map background,
+  // instead of a label on every map (the licences ask for visible credit near the maps).
+  doc.pages.forEach((page, i) => {
+    const credits = [...new Set(slots.flatMap((s, j) => (s.page === page && bases[j] ? [bases[j].attribution] : [])))];
+    if (!credits.length) return;
+    doc.setPage(i);
+    const text = credits.map((c) => (c.startsWith('©') ? c : `© ${c}`)).join(' · ');
+    doc.text(doc.fit(text, W - 220, 6.5), M + W / 2, doc.height - 20, { size: 6.5, color: FAINT, align: 'center' });
   });
   return doc;
 }
@@ -575,15 +643,9 @@ function drawMap(doc, map, ox, oy) {
       for (const g of map.grid) if (g.label && g.lx < w - 28 && g.ly > 10) doc.text(g.label, ox + g.lx, oy + g.ly, { size: 6, color: '#94a3b8' });
     });
     const small = w < 200;
-    // Drawn once the basemap (and so its source's credit line) is known.
-    const attribution = (text) => {
-      const fs = small ? 4.5 : 6, aw = doc.measure(text, fs) + 6;
-      doc.fill('#ffffff').rect(ox, oy + h - fs - 5, aw, fs + 5);
-      doc.text(text, ox + 3, oy + h - 3.5, { size: fs, color: MUTED });
-    };
-    // Labels keep clear of route markers, the scale bar and the attribution.
+    // Labels keep clear of route markers and the scale bar.
     const reserved = map.markers.map((m) => [m.x - 10, m.y - 10, m.x + 10, m.y + 10]);
-    // Scale bar: the first corner free of route markers (bottom-left holds the attribution).
+    // Scale bar: the first corner free of route markers.
     if (map.scale) {
       const bw = map.scale.len + 22, bh = 24;
       const corners = small
@@ -594,8 +656,7 @@ function drawMap(doc, map, ox, oy) {
       map.scaleBox = [bx, by, bx + bw, by + bh];
       reserved.push(map.scaleBox);
     }
-    reserved.push([0, h - 14, doc.measure(ATTRIBUTION, small ? 4.5 : 6) + 8, h]);
-    (doc.mapSlots = doc.mapSlots || []).push({ map, ox, oy, small, grid, attribution, reserved, page: doc.ops, index: doc.ops.length });
+    (doc.mapSlots = doc.mapSlots || []).push({ map, ox, oy, small, grid, reserved, page: doc.ops, index: doc.ops.length });
     doc.ops.push('');
     doc.stroke('#94a3b8').lineWidth(1.2).dash(4, 3);
     for (const l of map.links || []) doc.polyline(l.points.map(([x, y]) => [ox + x, oy + y]));
@@ -669,7 +730,10 @@ function table(doc, t) {
 }
 
 function fileName(data) {
-  const date = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', ...(data.timeZone ? { timeZone: data.timeZone } : {}) }).format(new Date());
+  // "2026-11-12 14-05": date and 24-hour time in the user's zone, sortable, no ':' (Windows rejects it).
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', ...(data.timeZone ? { timeZone: data.timeZone } : {}) })
+    .formatToParts(data.generatedAt || new Date()).map((x) => [x.type, x.value]));
+  const date = `${p.year}-${p.month}-${p.day} ${p.hour}-${p.minute}`;
   // Keep letters of every script; drop only what file systems reject.
   const clean = (v) => v.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').trim().replace(/\s+/g, ' ');
   const safe = clean(data.title).slice(0, 80) || data.t('trip');

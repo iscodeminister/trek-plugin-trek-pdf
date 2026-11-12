@@ -17,11 +17,14 @@ Trek PDF adds a **Report** tab to every trip. The tab shows a live preview of th
 The report contains:
 
 - **Map overview.** Every planned stop on the map style you picked, coloured by day, with dashed lines showing how the trip moves from one day to the next. Each day also gets its own zoomed-in street map, so a trip that covers several cities stays readable. The OpenFreeMap styles are vector graphics: they stay sharp when you zoom or print, and a report with maps is a few hundred kilobytes. The OpenStreetMap style is made of images, so its PDFs are larger, about 2 MB.
+- **Timeline.** The trip at a glance: every day is a row on an hour axis, and each stop with a time is a bar from its start to its end time. A stop without an end time runs until the next stop, for an hour at most. Stops without a time are listed under their day.
 - **Itinerary.** Every day in order with its numbered stops, times, categories, addresses, place notes and day notes. Places you saved but haven't put on a day yet are listed at the end.
 - **Accommodation.** Each stay with check-in and check-out days and times, plus the number of nights.
 - **Costs.** The total for each currency, a bar chart by category and a table of every expense. This section needs TREK's Costs addon. When the addon is off for a trip, the section is left out.
 
-The finished PDF is stored in the trip's Files, so everyone on the trip can open, download or print it. TREK shows plugins in a sandboxed frame that can't download files, so the PDF goes to Files instead of downloading straight away.
+Map credits (© OpenFreeMap, OpenMapTiles and OpenStreetMap contributors) appear once in the footer of each page that has a map, instead of on every map. In the tab they sit behind a small **©** badge in the map's corner; hover over it or click it to read them.
+
+The finished PDF is stored in the trip's Files, so everyone on the trip can open, download or print it. Its name ends with the date and time it was created, in your time zone (for example `Japan Summer 2026 - Trip report 2026-11-12 14-07.pdf`), and the PDF's cover shows the same time, so reports made on the same day are easy to tell apart. TREK shows plugins in a sandboxed frame that can't download files, so the PDF goes to Files instead of downloading straight away.
 
 **Your language.** The tab and the PDF follow the language you chose in TREK, for all 28 of TREK's languages. Headings, dates, numbers, money and the place names on the map are all in that language. The one exception is the OpenStreetMap style: its labels are part of the map images, so they're always in each country's own language. For Arabic and Hebrew the tab is translated and laid out right-to-left, but the PDF is written in English, because its renderer can't yet lay out right-to-left text.
 
