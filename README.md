@@ -8,17 +8,22 @@ A printable trip report for TREK: route maps, a day-by-day itinerary, accommodat
 
 Trek PDF adds a **Report** tab to every trip. The tab shows a live preview of the trip with a route map, the main numbers and the cost split by category. Pick the sections you want, choose A4 or Letter, and press **Generate PDF**.
 
-**The preview map is interactive.** Zoom with the **+** and **−** buttons, a double-click (Shift + double-click zooms out), Ctrl/⌘ + mouse wheel, or a trackpad or touch pinch; a plain mouse wheel still scrolls the page. Drag to pan, and press **⤢** to fit the whole trip again. The day buttons under the map jump to each day's own map.
+**The preview map is interactive.** Drag to move it. Zoom with the **+** and **−** buttons, a double-click (Shift + double-click zooms out), Ctrl/⌘ + mouse wheel, or a trackpad or touch pinch; a plain mouse wheel still scrolls the page. With the keyboard, click the map, then use the arrow keys to move, **+** and **−** to zoom and **0** to fit again. The buttons under the map switch between all days, each day's own map, and each tour.
 
-**What you frame is what you print.** Each map view (all days, and every single day) keeps its own zoom and position. The tab remembers them while it stays open, even when you switch to other TREK tabs and back. The PDF uses them too: the overview shows the area you framed for all days, and each day's map shows the area you framed for that day. Views you never touched fit their stops automatically.
+**What you frame is what you print, and it's saved.** Each map view (all days, every single day, and every tour) keeps its own zoom and position. As soon as you drag or zoom a map, that view is saved for you, and the PDF uses it: the overview shows the area you framed for all days, each day's map the area you framed for that day, and each tour's map the area you framed for that tour. Above the map you can see whether the view on screen is **Saved** or **Fitted automatically**, and **Reset** (or the fit button on the map) goes back to the automatic fit. Views you never touched fit their stops automatically, and a plain click on the map doesn't count as framing it. Saved views come back after a reload and on your other devices, and they belong to the day or tour, not to its position, so adding or moving days never puts a view on the wrong map. Each person on the trip has their own saved views.
 
-**Map style.** Choose from six styles: OpenFreeMap's **Bright** (the default) and **Liberty** (colourful), **Positron** (light grey), **Dark** and **Fiord** (blue-grey), or the standard **OpenStreetMap** map. The style you pick is used for the preview and for every map in the PDF, and the tab remembers it while it stays open.
+**Tour preview.** When the trip has tours, a **Tours** card under the map shows each one as it will print: the shape of its route, when it is planned, its figures, its elevation profile and the places along it. Click a tour's route thumbnail, or its button under the map, to open the tour's own map; frame it there and the tour's map in the PDF shows the same area.
+
+**Map style.** Press the style button in the map's top-right corner to pick from six styles, shown as small previews: OpenFreeMap's **Bright** (the default) and **Liberty** (colourful), **Positron** (light grey), **Dark** and **Fiord** (blue-grey), or the standard **OpenStreetMap** map. The style you pick is used for the preview and for every map in the PDF.
+
+**Your choices are remembered.** The tab also keeps the map style, the sections you ticked, the tour detail and the paper size you chose, for every trip, until you change them.
 
 The report contains:
 
 - **Map overview.** Every planned stop on the map style you picked, coloured by day, with dashed lines showing how the trip moves from one day to the next. Each day also gets its own zoomed-in street map, so a trip that covers several cities stays readable. The OpenFreeMap styles are vector graphics: they stay sharp when you zoom or print, and a report with maps is a few hundred kilobytes. The OpenStreetMap style is made of images, so its PDFs are larger, about 2 MB.
 - **Timeline.** The trip at a glance: every day is a row on an hour axis, and each stop with a time is a bar from its start to its end time. A stop without an end time runs until the next stop, for an hour at most. Stops without a time are listed under their day.
-- **Itinerary.** Every day in order with its numbered stops, times, categories, addresses, place notes and day notes. Places you saved but haven't put on a day yet are listed at the end.
+- **Itinerary.** Every day in order with its numbered stops, times, categories, addresses, place notes and day notes (with their time, when one is set). A time you set for a stop on a particular day is used before the place's general time. Notes written in Markdown (for example pasted from a planner or a chat) print as clean text: headings and table headers in bold, lists with their bullets or numbers, each table row as one line, links as their text, and no leftover `**`, `|` or `---` markers. Places you saved but haven't put on a day yet are listed at the end.
+- **Tours.** Every hike, walk or other tour from TREK's Tours addon that is planned on a day, and any place with an imported GPX track. Each one gets its own route map, its distance, ascent, descent, highest and lowest point and duration, and an elevation profile. Ascent and descent are counted the way TREK counts them, so the numbers match the app. Tracks are also drawn on the overview map and on each day's map, and the itinerary shows a tour's distance and climb under its name. Each tour's map marks its start and finish and the trip's places that lie on the route (within about 200 m). The section is left out when the trip has no tours. Under **Tour detail** in the tab you choose how much each tour shows: **Compact** (a small map with the figures and profile beside it, several tours to a page) or **Detailed** (a full-width map that labels the start, the finish and the trip's places along the route, the average speed, a large profile with a height and distance grid, and the tour's notes in full).
 - **Accommodation.** Each stay with check-in and check-out days and times, plus the number of nights.
 - **Costs.** The total for each currency, a bar chart by category and a table of every expense. This section needs TREK's Costs addon. When the addon is off for a trip, the section is left out.
 
@@ -43,14 +48,16 @@ The finished PDF is stored in the trip's Files, so everyone on the trip can open
 | `db:read:trips` | Reads the open trip with its days, places, assigned stops and accommodation to build the report. |
 | `db:read:costs` | Reads the trip's expenses for the Costs section. The plugin never changes any of them. |
 | `db:write:files` | Saves the finished PDF to the trip's Files. The user must be allowed to upload files to that trip. |
+| `db:own` | Keeps each user's saved map views (how they framed the overview, each day and each tour) and their tab choices (map style, sections, tour detail, paper) in the plugin's own small database, so they come back after a reload or on another device. Nothing else is stored there. |
+| `hook:user-data` | Lets TREK delete a user's saved views and choices when the user is deleted, and include them in a data export. |
 | `http:outbound:tiles.openfreemap.org` | Downloads OpenFreeMap vector tiles for the Bright, Liberty, Positron, Dark and Fiord map styles, server-side. |
 | `http:outbound:tile.openstreetmap.org` | Downloads standard OpenStreetMap tiles, server-side, only when the OpenStreetMap style is picked. These two map hosts are the only servers the plugin ever contacts; turn the **Map background** setting off to stop all outside requests. |
 
-The plugin stores nothing of its own. Downloaded tiles are kept in memory only, and cleared when the plugin restarts.
+The plugin stores only each user's saved map views and tab choices (see `db:own`). Downloaded tiles are kept in memory only, and cleared when the plugin restarts.
 
 ## Setup
 
-Install Trek PDF from **Admin → Plugins → Discover**, activate it and approve the five permissions above. Then open any trip and go to the **Trek PDF** tab.
+Install Trek PDF from **Admin → Plugins → Discover**, activate it and approve the permissions above. Then open any trip and go to the **Trek PDF** tab.
 
 One optional instance setting, under **Admin → Plugins → Trek PDF → Instance settings**:
 

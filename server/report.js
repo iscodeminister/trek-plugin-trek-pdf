@@ -2,6 +2,7 @@
 const { PdfDoc } = require('./pdf');
 const { covers: fontCovers } = require('./font');
 const { translator } = require('./i18n');
+const md = require('./markdown');
 
 const DAY_COLORS = ['#e11d48', '#2563eb', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5'];
 const INK = '#111827', MUTED = '#6b7280', FAINT = '#9ca3af', LINE = '#e5e7eb', SOFT = '#f3f4f6', BRAND = '#0f172a', ACCENT = '#2563eb';
@@ -49,6 +50,61 @@ function fmtTime(t) {
   return m ? `${m[1].padStart(2, '0')}:${m[2]}` : t.slice(0, 5);
 }
 
+// Distances, heights and durations in the user's locale ("12.4 km", "540 m", "3 h 20 min").
+function fmtUnit(v, unit, locale, digits = 0) {
+  try {
+    const s = new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: digits }).format(v);
+    if (covers(s)) return s;
+  } catch { /* unknown locale/unit → plain */ }
+  return `${v.toFixed(digits)} ${{ kilometer: 'km', meter: 'm', hour: 'h', minute: 'min', 'kilometer-per-hour': 'km/h' }[unit] || unit}`;
+}
+const fmtKm = (km, locale) => (km < 1 ? fmtUnit(Math.round(km * 1000), 'meter', locale) : fmtUnit(km, 'kilometer', locale, km < 100 ? 1 : 0));
+function fmtDuration(min, locale) {
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return [h ? fmtUnit(h, 'hour', locale) : '', m || !h ? fmtUnit(m, 'minute', locale) : ''].filter(Boolean).join(' ');
+}
+
+const ELEVATION_NOISE_M = 5; // same jitter filter TREK uses, so ascent/descent match the app
+const haversine = (a, b) => {
+  const r = Math.PI / 180, dLat = (b[0] - a[0]) * r, dLng = (b[1] - a[1]) * r;
+  const c = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(Math.min(1, c)), Math.sqrt(Math.max(0, 1 - c)));
+};
+/** Every n-th item so at most `max` remain, always keeping the last. */
+const thin = (arr, max) => {
+  if (arr.length <= max) return arr;
+  const step = (arr.length - 1) / (max - 1);
+  return Array.from({ length: max }, (_, i) => arr[Math.round(i * step)]);
+};
+
+/**
+ * A tour's track as TREK stores it: JSON `[[lat, lng], …]` or `[[lat, lng, ele], …]`.
+ * Returns its metrics (as TREK counts them) plus thinned copies for drawing; null when unusable.
+ */
+function parseTrack(raw) {
+  let a = raw;
+  if (typeof raw === 'string') { try { a = JSON.parse(raw); } catch { return null; } }
+  if (!Array.isArray(a)) return null;
+  const pts = a.filter((q) => Array.isArray(q) && (q.length === 2 || q.length === 3) && q.every((v) => typeof v === 'number' && Number.isFinite(v)) && Math.abs(q[0]) <= 90 && Math.abs(q[1]) <= 180);
+  if (pts.length < 2) return null;
+  const hasEle = pts.every((q) => q.length === 3);
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + haversine(pts[i - 1], pts[i]));
+  const out = { km: cum[cum.length - 1] / 1000, gain: null, loss: null, minEle: null, maxEle: null, profile: null, line: thin(pts, 400).map((q) => [q[0], q[1]]) };
+  out.loop = haversine(pts[0], pts[pts.length - 1]) < 60;
+  if (hasEle) {
+    let gain = 0, loss = 0, ref = pts[0][2], lo = ref, hi = ref;
+    for (const q of pts) {
+      lo = Math.min(lo, q[2]); hi = Math.max(hi, q[2]);
+      const d = q[2] - ref;
+      if (d >= ELEVATION_NOISE_M) gain += d; else if (d <= -ELEVATION_NOISE_M) loss -= d; else continue;
+      ref = q[2];
+    }
+    Object.assign(out, { gain, loss, minEle: lo, maxEle: hi, profile: thin(pts.map((q, i) => [cum[i], q[2]]), 160) });
+  }
+  return out;
+}
+
 function validCoord(lat, lng) {
   return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 85 && Math.abs(lng) <= 180 && !(lat === 0 && lng === 0);
 }
@@ -81,12 +137,20 @@ async function loadTrip(ctx, tripId, { lang = 'en', locale = 'en-US', currency, 
     const p = (a.place && typeof a.place === 'object' ? a.place : null) || placeById.get(String(a.place_id)) || {};
     if (p.id !== undefined) used.add(String(p.id));
     const cat = p.category && typeof p.category === 'object' ? p.category : null;
+    // A tour on a day is a stop whose place carries a track (TREK's tour_route_geometry).
+    const track = parseTrack(a.tour_route_geometry || p.route_geometry || (placeById.get(String(a.place_id)) || {}).route_geometry);
+    const lat = num(p.lat ?? p.latitude), lng = num(p.lng ?? p.lon ?? p.longitude);
     return {
+      placeId: p.id ?? a.place_id ?? null,
       name: str(p.name, a.name) || t('untitledPlace'),
-      lat: num(p.lat ?? p.latitude),
-      lng: num(p.lng ?? p.lon ?? p.longitude),
-      time: fmtTime(str(a.place_time, p.place_time, a.start_time, a.time)),
-      endTime: fmtTime(str(a.end_time, p.end_time)),
+      // A tour without its own coordinates sits where its track starts.
+      lat: track && !validCoord(lat, lng) ? track.line[0][0] : lat,
+      lng: track && !validCoord(lat, lng) ? track.line[0][1] : lng,
+      track,
+      duration: num(p.duration_minutes) > 0 ? num(p.duration_minutes) : null,
+      // The time set for this day (assignment_time) wins over the place's general one.
+      time: fmtTime(str(a.assignment_time, a.place_time, p.place_time, a.start_time, a.time)),
+      endTime: fmtTime(str(a.assignment_end_time, a.end_time, p.end_time)),
       category: str(cat && cat.name, p.category_name, typeof p.category === 'string' ? p.category : ''),
       address: str(p.address),
       notes: str(a.notes, p.notes, p.description),
@@ -100,8 +164,10 @@ async function loadTrip(ctx, tripId, { lang = 'en', locale = 'en-US', currency, 
       const assignments = (Array.isArray(d.assignments) ? d.assignments : [])
         .slice()
         .sort((a, b) => (num(a.order_index ?? a.position) || 0) - (num(b.order_index ?? b.position) || 0));
-      const notes = (Array.isArray(d.notes_items) ? d.notes_items : [])
-        .map((x) => str(x && x.text, x && x.content, x && x.title, typeof x === 'string' ? x : ''))
+      // Day notes: the day's own note, then its note items (with their time, when set).
+      const notes = [str(d.notes), ...(Array.isArray(d.notes_items) ? d.notes_items : [])
+        .map((x) => [str(x && x.time).slice(0, 24), str(x && x.text, x && x.content, x && x.title, typeof x === 'string' ? x : '')])
+        .map(([time, text]) => (text && time ? `${time}  ${text}` : text))]
         .filter(Boolean);
       return {
         id: d.id,
@@ -117,7 +183,39 @@ async function loadTrip(ctx, tripId, { lang = 'en', locale = 'en-US', currency, 
 
   const unscheduled = (places || [])
     .filter((p) => !used.has(String(p.id)))
-    .map((p) => ({ name: str(p.name) || t('untitledPlace'), lat: num(p.lat), lng: num(p.lng) }));
+    .map((p) => ({ placeId: p.id, name: str(p.name) || t('untitledPlace'), lat: num(p.lat), lng: num(p.lng), track: parseTrack(p.route_geometry), duration: num(p.duration_minutes) > 0 ? num(p.duration_minutes) : null }));
+
+  // Tours: every track on the trip once, with the days it is planned on (a multi-day tour has several).
+  const tours = [];
+  const tourByPlace = new Map();
+  const addTour = (s, d) => {
+    const key = s.placeId === null || s.placeId === undefined ? s : String(s.placeId);
+    let tour = tourByPlace.get(key);
+    if (!tour) {
+      tour = { key: s.placeId === null || s.placeId === undefined ? `n${tours.length}` : String(s.placeId).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 24) || `n${tours.length}`, name: s.name, color: d ? d.color : FAINT, days: [], time: s.time || '', endTime: s.endTime || '', category: s.category || '', notes: s.notes || '', track: s.track, lat: s.lat, lng: s.lng,
+        duration: s.duration || (toMin(s.time) !== null && toMin(s.endTime) > toMin(s.time) ? toMin(s.endTime) - toMin(s.time) : null) };
+      tourByPlace.set(key, tour);
+      tours.push(tour);
+    }
+    if (d && !tour.days.includes(d.index)) tour.days.push(d.index);
+  };
+  for (const d of days) for (const st of d.stops) if (st.track) addTour(st, d);
+  for (const u of unscheduled) if (u.track) addTour(u, null);
+  // Positions: the trip's own places that lie on a tour's route (within ~200 m), in route order.
+  // TREK doesn't hand plugins a tour's waypoints, so these are what can be named along it.
+  const spots = [...days.flatMap((d) => d.stops), ...unscheduled].filter((p) => !p.track && validCoord(p.lat, p.lng));
+  for (const tour of tours) {
+    const seen = new Set();
+    tour.positions = spots
+      .map((p) => {
+        let best = Infinity, at = 0;
+        tour.track.line.forEach((q, i) => { const dist = haversine([p.lat, p.lng], q); if (dist < best) { best = dist; at = i; } });
+        return { name: p.name, lat: p.lat, lng: p.lng, at, best };
+      })
+      .filter((p) => p.best <= 200 && !seen.has(p.name) && seen.add(p.name))
+      .sort((a, b) => a.at - b.at)
+      .slice(0, 9);
+  }
 
   const dayById = new Map(days.map((d) => [String(d.id), d]));
   const lodging = (Array.isArray(rawAccs) ? rawAccs : []).map((a) => {
@@ -169,6 +267,7 @@ async function loadTrip(ctx, tripId, { lang = 'en', locale = 'en-US', currency, 
     baseCurrency,
     days,
     unscheduled,
+    tours,
     lodging,
     costs,
   };
@@ -209,11 +308,13 @@ function buildMap(data, w, h, opts = {}) {
   // opts.view: an explicit { cx, cy, k } (the user's zoom from the tab) instead of fit-to-stops.
   const { minSpan = 0.004, pad = 36, labels = true, gridLabels = true, view = null } = opts;
   const pts = [];
-  for (const d of data.days) for (const s of d.stops) if (validCoord(s.lat, s.lng)) pts.push(s);
-  for (const s of data.unscheduled) if (validCoord(s.lat, s.lng)) pts.push(s);
+  // Tour tracks count toward the fitted area, so a hike is shown whole, not just its start.
+  const add = (s) => { if (validCoord(s.lat, s.lng)) pts.push(s); if (s.track) for (const q of s.track.line) pts.push({ lat: q[0], lng: q[1] }); };
+  for (const d of data.days) for (const s of d.stops) add(s);
+  for (const s of data.unscheduled) add(s);
   const t = data.t || translator('en');
   const legend = data.days.map((d) => ({ color: d.color, label: `${t('dayN', { n: d.index + 1 })}${d.label ? ' · ' + d.label : ''}`, count: d.stops.length }));
-  if (!pts.length) return { w, h, empty: true, routes: [], markers: [], grid: [], scale: null, legend };
+  if (!pts.length) return { w, h, empty: true, routes: [], tracks: [], markers: [], grid: [], scale: null, legend };
 
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
   for (const p of pts) {
@@ -243,26 +344,40 @@ function buildMap(data, w, h, opts = {}) {
   }
 
   // Every element also keeps its lat/lng (ll) so the tab can re-project it while zooming.
-  const routes = [], markers = [], links = [];
+  const routes = [], tracks = [], markers = [], links = [];
+  const addTrack = (s, color) => tracks.push({ color, points: s.track.line.map(([la, ln]) => P(la, ln)), ll: s.track.line });
   let prevEnd = null, prevLL = null;
   for (const d of data.days) {
-    const line = [], ll = [];
+    // The day's straight stop-to-stop line; a tour interrupts it: the line runs to where
+    // the track starts and on from where it ends, and the track itself is drawn as recorded.
+    let line = [], ll = [], first = null, firstLL = null, last = null, lastLL = null;
+    const flush = () => { if (line.length > 1) routes.push({ color: d.color, points: line, ll }); line = []; ll = []; };
     d.stops.forEach((s, i) => {
       if (!validCoord(s.lat, s.lng)) return;
       const [x, y] = P(s.lat, s.lng);
-      line.push([x, y]);
-      ll.push([s.lat, s.lng]);
-      markers.push({ x, y, lat: s.lat, lng: s.lng, color: d.color, n: i + 1, day: d.index + 1, label: s.name });
+      if (!opts.ends) markers.push({ x, y, lat: s.lat, lng: s.lng, color: d.color, n: i + 1, day: d.index + 1, label: s.name });
+      const a = s.track ? s.track.line[0] : [s.lat, s.lng], b = s.track ? s.track.line[s.track.line.length - 1] : a;
+      line.push(P(a[0], a[1])); ll.push(a);
+      if (!first) { first = line[line.length - 1]; firstLL = a; }
+      if (s.track) {
+        addTrack(s, d.color);
+        flush();
+        line.push(P(b[0], b[1])); ll.push(b);
+        // opts.ends (a tour's own map): mark start and finish instead of numbering the stop.
+        if (opts.ends) for (const q of s.track.loop ? [a] : [a, b]) { const [qx, qy] = P(q[0], q[1]); markers.push({ x: qx, y: qy, lat: q[0], lng: q[1], color: d.color, n: null, day: d.index + 1, label: s.name }); }
+      }
+      last = line[line.length - 1]; lastLL = ll[ll.length - 1];
     });
-    if (line.length > 1) routes.push({ color: d.color, points: line, ll });
+    flush();
     // Dashed "journey" link from where the previous day ended to where this one starts.
-    if (line.length) {
-      if (prevEnd && Math.hypot(prevEnd[0] - line[0][0], prevEnd[1] - line[0][1]) > 2) links.push({ points: [prevEnd, line[0]], ll: [prevLL, ll[0]] });
-      prevEnd = line[line.length - 1];
-      prevLL = ll[ll.length - 1];
+    if (first) {
+      if (prevEnd && Math.hypot(prevEnd[0] - first[0], prevEnd[1] - first[1]) > 2) links.push({ points: [prevEnd, first], ll: [prevLL, firstLL] });
+      prevEnd = last;
+      prevLL = lastLL;
     }
   }
   for (const s of data.unscheduled) {
+    if (s.track) addTrack(s, FAINT);
     if (!validCoord(s.lat, s.lng)) continue;
     const [x, y] = P(s.lat, s.lng);
     markers.unshift({ x, y, lat: s.lat, lng: s.lng, color: FAINT, n: null, day: null, label: s.name });
@@ -275,12 +390,119 @@ function buildMap(data, w, h, opts = {}) {
   const dist = [1, 2, 5, 10].map((f) => f * mag).filter((v) => v <= target).pop() || mag;
   const scale = { len: dist / mPerPt, label: dist >= 1000 ? `${dist / 1000} km` : `${dist} m` };
 
-  return { w, h, empty: false, view: { cx, cy, k }, routes, links, markers, grid, scale, legend, showLabels: labels && markers.length <= 30 };
+  return { w, h, empty: false, view: { cx, cy, k }, routes, tracks, links, markers, grid, scale, legend, showLabels: labels && markers.length <= 30 };
 }
+
+// "12.4 km · ↑ 540 m · ↓ 520 m" (arrows only when the fonts can draw them).
+function trackLine(track, locale) {
+  const up = covers('↑') ? '↑ ' : '+', down = covers('↓') ? '↓ ' : '−';
+  return [fmtKm(track.km, locale), track.gain !== null ? up + fmtUnit(Math.round(track.gain), 'meter', locale) : '', track.loss !== null ? down + fmtUnit(Math.round(track.loss), 'meter', locale) : ''].filter(Boolean).join(' · ');
+}
+/** When a tour is planned and its figures, worded for the PDF and for the tab's preview. */
+function tourInfo(data, tour, detailed) {
+  const t = data.t, tr = tour.track, L = data.locale;
+  const when = tour.days.length
+    ? [tour.days.map((i) => t('dayN', { n: i + 1 })).join(', '), tour.days.length === 1 ? data.days[tour.days[0]].label : '', tour.time ? tour.time + (tour.endTime ? `–${tour.endTime}` : '') : ''].filter(Boolean).join(' · ')
+    : t('notScheduled');
+  const speed = tour.duration ? tr.km / (tour.duration / 60) : null;
+  const figs = [
+    [t('distance'), fmtKm(tr.km, L)],
+    tr.gain !== null ? [t('ascent'), fmtUnit(Math.round(tr.gain), 'meter', L)] : null,
+    tr.loss !== null ? [t('descent'), fmtUnit(Math.round(tr.loss), 'meter', L)] : null,
+    tour.duration ? [t('duration'), fmtDuration(tour.duration, L)] : null,
+    detailed && speed ? [t('avgSpeed'), fmtUnit(speed, 'kilometer-per-hour', L, 1)] : null,
+    tr.maxEle !== null ? [t('highest'), fmtUnit(Math.round(tr.maxEle), 'meter', L)] : null,
+    tr.minEle !== null ? [t('lowest'), fmtUnit(Math.round(tr.minEle), 'meter', L)] : null,
+  ].filter(Boolean);
+  return { when, figs };
+}
+/** A tour's own map: its track with start and finish, and the named positions along it. */
+function tourMap(data, tour, w, h, opts = {}) {
+  const t = data.t, tr = tour.track;
+  const day = { index: tour.days.length ? tour.days[0] : 0, color: tour.color, label: '', stops: [{ name: tour.name, lat: tour.lat, lng: tour.lng, track: tr }] };
+  // opts.view: the zoom the user framed for this tour in the tab. Ignored when the tour is
+  // nowhere near it (the trip's tours changed since it was saved).
+  let view = opts.view || null;
+  if (view) {
+    const x = w / 2 + (mx(tr.line[0][1]) - view.cx) * view.k, y = h / 2 - (my(tr.line[0][0]) - view.cy) * view.k;
+    if (x < -w || x > 2 * w || y < -h || y > 2 * h) view = null;
+  }
+  const map = buildMap({ days: [day], unscheduled: [], t }, w, h, { minSpan: 0.0004, pad: opts.pad || 18, labels: false, gridLabels: false, ends: true, view });
+  if (map.empty) return map;
+  const P = (lat, lng) => [w / 2 + (mx(lng) - map.view.cx) * map.view.k, h / 2 - (my(lat) - map.view.cy) * map.view.k];
+  const ends = map.markers.splice(0); // start (and finish) from buildMap
+  ends[0].label = tr.loop ? `${t('start')} / ${t('finish')}` : t('start');
+  if (ends[1]) ends[1].label = t('finish');
+  for (const p of tour.positions || []) { const [x, y] = P(p.lat, p.lng); map.markers.push({ x, y, lat: p.lat, lng: p.lng, color: INK, n: null, day: null, label: p.name }); }
+  map.markers.push(...ends);
+  for (const m of map.markers) m.title = m.label; // the tab's tooltip: just the name
+  map.showLabels = !!opts.labels;
+  return map;
+}
+
+// A round step (1, 2, 5 × 10ⁿ) that splits `span` into at most `max` parts.
+function niceStep(span, max) {
+  const raw = Math.max(span, 1e-9) / max, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  return [1, 2, 5, 10].map((f) => f * mag).find((v) => v >= raw);
+}
+/** Elevation over distance in a w×h box; opts.grid adds height lines and distance ticks every opts.step km. */
+function drawProfile(doc, tr, color, x, y, w, h, opts = {}) {
+  const cx0 = x + 26, cw = w - 26, cy0 = y, ch = h - 12;
+  const span = Math.max(tr.maxEle - tr.minEle, 20), lo = tr.minEle - span * 0.08, hi = tr.maxEle + span * 0.08;
+  const total = tr.profile[tr.profile.length - 1][0] || 1;
+  const pt = ([dist, ele]) => [cx0 + (dist / total) * cw, cy0 + ch - ((ele - lo) / (hi - lo)) * ch];
+  const line = tr.profile.map(pt);
+  const label = (txt, lx, ly, align) => doc.text(txt, lx, ly, { size: 6.5, color: FAINT, align });
+  if (opts.grid) {
+    const es = niceStep(hi - lo, 4);
+    doc.stroke(LINE).lineWidth(0.5);
+    for (let e = Math.ceil(lo / es) * es; e <= hi; e += es) {
+      const gy = pt([0, e])[1];
+      doc.line(cx0, gy, cx0 + cw, gy);
+      label(String(Math.round(e)), cx0 - 4, gy + 2.5, 'right');
+    }
+  }
+  doc.fill(tint(color, 0.82)).path([[...line, [cx0 + cw, cy0 + ch], [cx0, cy0 + ch]]]);
+  doc.stroke(color).lineWidth(1.2).polyline(line);
+  doc.stroke(opts.grid ? MUTED : LINE).lineWidth(0.6).line(cx0, cy0 + ch, cx0 + cw, cy0 + ch);
+  if (opts.grid) {
+    for (let d = opts.step; d * 1000 < total - opts.step * 250; d += opts.step) {
+      const gx = cx0 + ((d * 1000) / total) * cw;
+      doc.stroke(MUTED).lineWidth(0.6).line(gx, cy0 + ch, gx, cy0 + ch + 3);
+      label(String(Math.round(d * 10) / 10), gx, cy0 + ch + 10, 'center');
+    }
+  } else {
+    label(String(Math.round(tr.maxEle)), cx0 - 4, pt([0, tr.maxEle])[1] + 2.5, 'right');
+    label(String(Math.round(tr.minEle)), cx0 - 4, pt([0, tr.minEle])[1] + 2.5, 'right');
+  }
+  label('0', cx0, cy0 + ch + 10, 'left');
+  label(fmtKm(tr.km, opts.locale), cx0 + cw, cy0 + ch + 10, 'right');
+}
+
+/**
+ * A note (Markdown or plain) laid out for the PDF: [{ text, x, bold, bullet?, bx? }] with x
+ * relative to the note's left edge. List items hang under their bullet; levels indent.
+ */
+function noteLines(doc, src, width, size, max = Infinity) {
+  const out = [];
+  const box = { '☐': covers('☐') ? '☐' : '–', '☑': covers('☑') ? '☑' : '✓' };
+  for (const b of md.blocks(src)) {
+    const bullet = box[b.bullet] || b.bullet;
+    const indent = b.level * 10, hang = bullet ? doc.measure(bullet, size, false) + 4 : 0;
+    doc.wrap(b.text, width - indent - hang, size, b.bold).forEach((text, i) => {
+      out.push({ text, x: indent + hang, bold: b.bold, bullet: i === 0 && bullet ? bullet : '', bx: indent });
+    });
+    if (out.length >= max) break;
+  }
+  if (out.length > max) { out.length = max; out[max - 1].text = doc.fit(out[max - 1].text + ' …', width - out[max - 1].x, size, out[max - 1].bold); }
+  return out;
+}
+// A colour mixed toward white (0 = unchanged, 1 = white), for chart fills.
+const tint = (hex, f) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - f) + 255 * f).toString(16).padStart(2, '0')).join('');
 
 // ---------------------------------------------------------------- PDF layout
 
-const SECTIONS = ['map', 'timeline', 'itinerary', 'lodging', 'costs'];
+const SECTIONS = ['map', 'timeline', 'itinerary', 'tours', 'lodging', 'costs'];
 const toMin = (t) => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ''); return m ? Math.min(24 * 60, +m[1] * 60 + +m[2]) : null; };
 
 /**
@@ -292,8 +514,9 @@ const PREVIEW = [640, 380];
 const fromPreview = (v, w, h) => (v ? { cx: v[0], cy: v[1], k: v[2] * Math.min(w / PREVIEW[0], h / PREVIEW[1]) } : null);
 
 /**
- * @param opts.views  { '-1': [cx, cy, k], '<dayIndex>': [...] } — zoom states from the tab
- *                    (overview / per day); views not listed fit their stops.
+ * @param opts.tourDetail  'full' = large map, profile with grid and full notes per tour; else compact.
+ * @param opts.views  { all: [cx, cy, k], 'd<dayId>': [...], 't<tourKey>': [...] } — zoom states
+ *                    from the tab (overview / per day / per tour); views not listed fit their content.
  */
 async function renderPdf(data, opts = {}) {
   const views = opts.views || {};
@@ -357,7 +580,7 @@ async function renderPdf(data, opts = {}) {
 
   if (data.description) {
     // The whole intro, wrapped (keeping its line breaks) and continued on the next page if needed.
-    for (const l of doc.wrap(data.description, W, 9.5)) { ensure(13); doc.text(l, M, y, { size: 9.5, color: MUTED }); y += 13; }
+    for (const l of noteLines(doc, data.description, W, 9.5)) { ensure(13); if (l.bullet) doc.text(l.bullet, M + l.bx, y, { size: 9.5, color: MUTED }); doc.text(l.text, M + l.x, y, { size: 9.5, bold: l.bold, color: l.bold ? INK : MUTED }); y += 13; }
     y += 8;
   }
 
@@ -365,7 +588,7 @@ async function renderPdf(data, opts = {}) {
   if (sections.has('map')) {
     heading(t('mapOverview'), '', 260 + 36); // heading + smallest map + legend, or a new page
     const mh = Math.max(260, Math.min(430, BOTTOM - y - 64));
-    const map = buildMap(data, W, mh, { view: fromPreview(views['-1'], W, mh) });
+    const map = buildMap(data, W, mh, { view: fromPreview(views.all, W, mh) });
     drawMap(doc, map, M, y);
     y += mh + 12;
     // legend
@@ -454,7 +677,7 @@ async function renderPdf(data, opts = {}) {
     for (const d of data.days) {
       // A per-day detail map beside the stops — the overview is too coarse for multi-city trips.
       const mini = sections.has('map') && d.stops.some((s) => validCoord(s.lat, s.lng))
-        ? buildMap({ days: [d], unscheduled: [] }, MINI_W, MINI_H, { minSpan: 0.0006, pad: 16, labels: false, gridLabels: false, view: fromPreview(views[d.index], MINI_W, MINI_H) })
+        ? buildMap({ days: [d], unscheduled: [] }, MINI_W, MINI_H, { minSpan: 0.0006, pad: 16, labels: false, gridLabels: false, view: fromPreview(views[`d${d.id}`], MINI_W, MINI_H) })
         : null;
       const CW = mini ? W - MINI_W - 14 : W; // stop column width
       ensure(mini ? 26 + MINI_H : 56);
@@ -471,8 +694,8 @@ async function renderPdf(data, opts = {}) {
       if (mini) drawMap(doc, mini, M + W - MINI_W, top - 8);
       if (!d.stops.length && !d.notes.length) { doc.text(t('nothingPlanned'), M + 56, y, { size: 9, color: FAINT }); y += 16; }
       d.stops.forEach((s, i) => {
-        const meta = [s.category, s.address].filter(Boolean).join(' · ');
-        const notes = s.notes ? doc.wrap(s.notes, CW - 60, 8.5).slice(0, 4) : [];
+        const meta = [s.category, s.track ? trackLine(s.track, data.locale) : '', s.address].filter(Boolean).join(' · ');
+        const notes = s.notes ? noteLines(doc, s.notes, CW - 60, 8.5, 12) : [];
         ensure(18 + (meta ? 11 : 0) + notes.length * 11);
         y += 4;
         if (i < d.stops.length - 1) doc.stroke(LINE).lineWidth(1).line(M + 23, y + 2, M + 23, y + 14 + (meta ? 11 : 0) + notes.length * 11);
@@ -484,14 +707,23 @@ async function renderPdf(data, opts = {}) {
         if (time) doc.text(time, M + CW, y, { size: 9, color: MUTED, align: 'right' });
         y += 12;
         if (meta) { doc.text(doc.fit(meta, CW - 56, 8.5), M + 56, y, { size: 8.5, color: MUTED }); y += 11; }
-        for (const l of notes) { doc.text(l, M + 56, y, { size: 8.5, color: FAINT }); y += 11; }
+        for (const l of notes) { if (l.bullet) doc.text(l.bullet, M + 56 + l.bx, y, { size: 8.5, color: FAINT }); doc.text(l.text, M + 56 + l.x, y, { size: 8.5, bold: l.bold, color: l.bold ? MUTED : FAINT }); y += 11; }
         y += 2;
       });
       for (const note of d.notes) {
-        const lines = doc.wrap(note, CW - 66, 8.5).slice(0, 3);
-        ensure(lines.length * 11 + 8);
+        // Each note gets a bullet; Markdown inside it (lists, tables, headings) hangs under it.
+        const lines = noteLines(doc, note, CW - 70, 8.5, 24);
+        if (!lines.length) continue;
+        ensure(Math.min(lines.length, 4) * 11 + 4);
         y += 2;
-        lines.forEach((l, i) => { doc.text((i ? '' : '• ') + l, M + 56 + (i ? 7 : 0), y, { size: 8.5, color: MUTED }); y += 11; });
+        if (!lines[0].bullet || lines[0].bx > 0) doc.text('•', M + 56, y, { size: 8.5, color: MUTED });
+        for (const l of lines) {
+          ensure(11);
+          const x = M + 66;
+          if (l.bullet) doc.text(l.bullet, x + l.bx, y, { size: 8.5, color: MUTED });
+          doc.text(l.text, x + l.x, y, { size: 8.5, bold: l.bold, color: l.bold ? INK : MUTED });
+          y += 11;
+        }
       }
       // Keep the block at least as tall as its map (when we're still on the map's page).
       if (mini && doc.pages.length === page) y = Math.max(y, top - 8 + MINI_H + 4);
@@ -509,6 +741,69 @@ async function renderPdf(data, opts = {}) {
       }
       y += 8;
     }
+  }
+
+  // ---- tours: each track with its own map, figures and elevation profile.
+  if (sections.has('tours') && data.tours.length) {
+    heading(t('tours'), t.n('nTours', data.tours.length), 150);
+    const MW = 200, MH = 128, RX = M + MW + 16, RW = W - MW - 16;
+    const detailed = opts.tourDetail === 'full';
+    for (const tour of data.tours) {
+      const tr = tour.track;
+      ensure(detailed ? 300 : MH + 40);
+      y += 4;
+      // Title row: name, then when it is planned.
+      const { when, figs } = tourInfo(data, tour, detailed);
+      const ww = doc.measure(when, 9) + 10;
+      doc.fill(tour.color).circle(M + 4, y - 3.5, 4);
+      doc.text(doc.fit(tour.name, W - 14 - ww, 11.5, true), M + 14, y, { size: 11.5, bold: true, color: INK });
+      doc.text(when, M + W, y, { size: 9, color: MUTED, align: 'right' });
+      y += 10;
+      const figure = ([label, value], fx, fy, fw) => {
+        doc.text(doc.fit(upper(label), fw - 6, 6.5, true), fx, fy + 8, { size: 6.5, bold: true, color: MUTED });
+        doc.text(doc.fit(value, fw - 6, 11, true), fx, fy + 22, { size: 11, bold: true, color: INK });
+      };
+
+      if (detailed) {
+        // Detailed: a full-width map naming the positions along the route, all figures in a row, a large
+        // profile with a height and distance grid, and the tour's notes in full.
+        const DH = 230, step = niceStep(tr.km, 10);
+        const map = tourMap(data, tour, W, DH, { pad: 34, labels: true, view: fromPreview(views[`t${tour.key}`], W, DH) });
+        drawMap(doc, map, M, y);
+        y += DH + 8;
+        const fw = W / figs.length;
+        figs.forEach((f, i) => figure(f, M + i * fw, y, fw));
+        y += 34;
+        if (tr.profile) {
+          ensure(120);
+          drawProfile(doc, tr, tour.color, M, y, W, 96, { locale: data.locale, grid: true, step });
+          y += 96 + 16;
+        }
+        if (tour.positions.length) {
+          for (const l of doc.wrap(`${t('alongRoute')}: ${tour.positions.map((q) => q.name).join('  ·  ')}`, W, 9)) { ensure(12); doc.text(l, M, y, { size: 9, color: INK }); y += 12; }
+          y += 4;
+        }
+        for (const l of tour.notes ? noteLines(doc, tour.notes, W, 9) : []) { ensure(12); if (l.bullet) doc.text(l.bullet, M + l.bx, y, { size: 9, color: MUTED }); doc.text(l.text, M + l.x, y, { size: 9, bold: l.bold, color: l.bold ? INK : MUTED }); y += 12; }
+        y += 2;
+      } else {
+        const top = y;
+        drawMap(doc, tourMap(data, tour, MW, MH, { view: fromPreview(views[`t${tour.key}`], MW, MH) }), M, top);
+        // Figures, three to a row.
+        const fw = RW / 3;
+        figs.forEach((f, i) => figure(f, RX + (i % 3) * fw, top + Math.floor(i / 3) * 30, fw));
+        const used = top + Math.ceil(figs.length / 3) * 30 + 6;
+        // Elevation profile over distance, or the tour's notes when the track has no heights.
+        if (tr.profile) drawProfile(doc, tr, tour.color, RX, used, RW, top + MH - used, { locale: data.locale });
+        else if (tour.notes) {
+          let ny = used + 8;
+          for (const l of noteLines(doc, tour.notes, RW, 8.5, Math.max(1, Math.floor((top + MH - ny) / 11)))) { if (l.bullet) doc.text(l.bullet, RX + l.bx, ny, { size: 8.5, color: MUTED }); doc.text(l.text, RX + l.x, ny, { size: 8.5, bold: l.bold, color: MUTED }); ny += 11; }
+        }
+        y = top + MH + 10;
+      }
+      doc.stroke(LINE).lineWidth(0.5).line(M, y, M + W, y);
+      y += 12;
+    }
+    y += 6;
   }
 
   // ---- lodging
@@ -584,9 +879,20 @@ async function renderPdf(data, opts = {}) {
 
   // ---- basemaps: fetched after layout, then dropped into the slots drawMap reserved.
   const slots = doc.mapSlots || [];
-  const bases = await Promise.all(slots.map((s) => (opts.basemap
-    ? opts.basemap(s.map, { labelScale: s.small ? 0.8 : 1, scale: s.small ? 2.5 : 2, measure: (txt, size, bold) => doc.measure(txt, size, bold), reserved: s.reserved }).catch(() => null)
-    : null)));
+  // At most 4 maps at a time: a long trip has dozens, and the tile servers are shared, free services.
+  const bases = new Array(slots.length).fill(null);
+  if (opts.basemap) {
+    let next = 0;
+    const worker = async () => {
+      for (let i = next++; i < slots.length; i = next++) {
+        const s = slots[i];
+        bases[i] = await Promise.resolve()
+          .then(() => opts.basemap(s.map, { labelScale: s.small ? 0.8 : 1, scale: s.small ? 2.5 : 2, measure: (txt, size, bold) => doc.measure(txt, size, bold), reserved: s.reserved }))
+          .catch(() => null);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, slots.length) }, worker));
+  }
   slots.forEach((s, i) => {
     const b = bases[i];
     const ops = b ? capture(doc, () => paintBasemap(doc, b, s.ox, s.oy, s.map.w, s.map.h)) : s.grid;
@@ -665,6 +971,11 @@ function drawMap(doc, map, ox, oy) {
       doc.stroke('#ffffff').lineWidth(4.5).polyline(r.points.map(([x, y]) => [ox + x, oy + y]));
       doc.stroke(r.color).lineWidth(2).polyline(r.points.map(([x, y]) => [ox + x, oy + y]));
     }
+    for (const tr of map.tracks || []) {
+      const line = tr.points.map(([x, y]) => [ox + x, oy + y]);
+      doc.stroke('#ffffff').lineWidth(4.2).polyline(line);
+      doc.stroke(tr.color).lineWidth(2.2).polyline(line);
+    }
     const boxes = [];
     for (const m of map.markers) {
       const x = ox + m.x, y = oy + m.y;
@@ -740,4 +1051,4 @@ function fileName(data) {
   return `${safe} - ${clean(data.t('tripReport'))} ${date}.pdf`;
 }
 
-module.exports = { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS, PREVIEW };
+module.exports = { loadTrip, buildMap, renderPdf, costSummary, tourInfo, tourMap, fileName, SECTIONS, PREVIEW };

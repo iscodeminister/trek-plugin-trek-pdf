@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npx -y trek-plugin-sdk dev",
     "pack": "npx -y trek-plugin-sdk pack",
-    "test": "node --test test/report.test.js",
+    "test": "node --no-warnings=ExperimentalWarning --test test/report.test.js",
     "shot": "node scripts/store-shot.mjs"
   },
   "devDependencies": {

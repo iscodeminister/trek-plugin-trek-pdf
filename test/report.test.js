@@ -22,10 +22,11 @@ test('summary returns stats, map geometry and cost totals', async () => {
   assert.strictEqual(status, 200);
   assert.strictEqual(body.title, 'Japan Summer 2026');
   assert.strictEqual(body.days, 5);
-  assert.strictEqual(body.stops, 13);
+  assert.strictEqual(body.stops, 15);
+  assert.strictEqual(body.tours, 2);
+  assert.strictEqual(body.map.tracks.length, 2);
   assert.strictEqual(body.unscheduled, 2);
   assert.strictEqual(body.map.empty, false);
-  assert.strictEqual(body.map.routes.length, 5);
   assert.strictEqual(body.costs[0].currency, 'JPY');
   assert.strictEqual(body.costs[0].total, 470100);
   assert.strictEqual(body.costs[1].currency, 'EUR');
@@ -140,7 +141,7 @@ test('basemap route validates an explicit view; unknown styles fall back', async
     assert.strictEqual(r.status, 400, JSON.stringify(view));
   }
   const s = await call(on.ctx, '/summary', { tripId: 1 });
-  assert.deepStrictEqual(s.body.styles, ['positron', 'bright', 'liberty', 'dark', 'fiord', 'osm']);
+  assert.deepStrictEqual(s.body.styles.map((x) => x.id), ['positron', 'bright', 'liberty', 'dark', 'fiord', 'osm']);
   assert.strictEqual(s.body.style, 'bright'); // admin default
   const noConfig = createMockHost({ ...structuredClone(fixtures), grants: GRANTS, config: { map_style: 'nope' } });
   assert.strictEqual((await call(noConfig.ctx, '/summary', { tripId: 1 })).body.style, 'bright'); // built-in default
@@ -160,7 +161,7 @@ test('report uses the zoom saved in the tab; invalid views are ignored', async (
   const m = buildMap(data, 300, 200, { view: { cx: zoomed[0], cy: zoomed[1], k: zoomed[2] * Math.min(300 / PREVIEW[0], 200 / PREVIEW[1]) } });
   assert.strictEqual(m.view.cx, zoomed[0]);
   assert.ok(Math.abs(m.view.k - zoomed[2] * (300 / 640)) < 1e-9);
-  const ok = await call(h.ctx, '/report', { tripId: 1, views: { '-1': zoomed, 0: zoomed, bad: zoomed, 1: [1, 2], 2: [99, 0, 5] } });
+  const ok = await call(h.ctx, '/report', { tripId: 1, views: { all: zoomed, d1: zoomed, bad: zoomed, d2: [1, 2], d3: [99, 0, 5], '-1': zoomed } });
   assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
 });
 
@@ -205,4 +206,212 @@ test('file name and cover carry the creation time in the user time zone', async 
   const data = await loadTrip(h.ctx, 1, { timeZone: 'Asia/Tokyo' });
   data.generatedAt = new Date('2026-11-12T05:07:00Z');
   assert.match(fileName(data), / 2026-11-12 14-07\.pdf$/);
+});
+
+test('tours: track metrics match TREK, tours section renders, times come from the assignment', async () => {
+  const { loadTrip, renderPdf, buildMap } = require('../server/report');
+  const h = createMockHost({ ...fixtures, grants: GRANTS });
+  const data = await loadTrip(h.ctx, 1, {});
+  assert.strictEqual(data.tours.length, 2);
+  const [hike, walk] = data.tours;
+  assert.deepStrictEqual(hike.days, [2]);
+  assert.strictEqual(hike.time, '07:45'); // assignment_time, not the place's own time
+  assert.strictEqual(hike.duration, 150);
+  assert.ok(hike.track.km > 2 && hike.track.km < 6, String(hike.track.km));
+  assert.ok(hike.track.gain > 150 && hike.track.gain < 260, String(hike.track.gain)); // jitter filtered
+  assert.ok(Math.abs(hike.track.gain - hike.track.loss) < 6, 'a loop climbs what it descends');
+  assert.strictEqual(hike.track.loop, true);
+  assert.strictEqual(walk.track.gain, null); // no heights in the track
+  assert.strictEqual(walk.track.profile, null);
+  // Maps fit and draw the tracks.
+  const m = buildMap(data, 640, 380);
+  assert.strictEqual(m.tracks.length, 2);
+  assert.ok(m.tracks[0].points.every(([x, y]) => x >= 0 && x <= 640 && y >= 0 && y <= 380));
+  const doc = await renderPdf(data, { sections: ['tours'] });
+  const all = doc.pages.flat().join('\n');
+  const hex = (s, bold) => doc._runs(s, bold).map((r) => r.glyphs.map(([g]) => g.toString(16).padStart(4, '0')).join('')).join('');
+  assert.ok(all.includes(hex('Tours', true)), 'heading drawn');
+  assert.ok(all.includes(hex('ASCENT', true)), 'figures drawn');
+  // Broken geometry is ignored, not fatal.
+  const fx = structuredClone(fixtures);
+  fx.trips['1'].days[2].assignments[1].tour_route_geometry = '{oops';
+  fx.trips['1'].places.find((p) => p.id === 16).route_geometry = '[[1,2]]';
+  const d2 = await loadTrip(createMockHost({ ...fx, grants: GRANTS }).ctx, 1, {});
+  assert.strictEqual(d2.tours.length, 1);
+});
+
+test('tour detail: the detailed layout adds a gridded profile, average speed and positions', async () => {
+  const { loadTrip, renderPdf } = require('../server/report');
+  const h = createMockHost({ ...fixtures, grants: [...GRANTS, 'db:read:files'] });
+  const data = await loadTrip(h.ctx, 1, {});
+  const hex = (doc, s, bold) => doc._runs(s, bold).map((r) => r.glyphs.map(([g]) => g.toString(16).padStart(4, '0')).join('')).join('');
+  const compact = await renderPdf(data, { sections: ['tours'] });
+  const full = await renderPdf(data, { sections: ['tours'], tourDetail: 'full' });
+  const text = (doc) => doc.pages.flat().join('\n');
+  assert.ok(!text(compact).includes(hex(compact, 'AVERAGE SPEED', true)));
+  assert.ok(text(full).includes(hex(full, 'AVERAGE SPEED', true)));
+  assert.ok(text(full).length > text(compact).length);
+  // The route accepts the option; anything else means compact.
+  for (const tourDetail of ['full', 'compact', 'nonsense']) {
+    const res = await call(h.ctx, '/report', { tripId: 1, sections: ['tours'], tourDetail });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+  }
+});
+
+test('tours name the positions along their route, and the summary carries the tab preview', async () => {
+  const { loadTrip } = require('../server/report');
+  const h = createMockHost({ ...fixtures, grants: GRANTS });
+  const data = await loadTrip(h.ctx, 1, {});
+  assert.deepStrictEqual(data.tours[0].positions.map((p) => p.name), ['Fushimi Inari Taisha']);
+  assert.deepStrictEqual(data.tours[1].positions.map((p) => p.name), ['Arashiyama Bamboo Grove']);
+  const { body } = await call(h.ctx, '/summary', { tripId: 1, locale: 'en' });
+  assert.strictEqual(body.tourList.length, 2);
+  const [hike, walk] = body.tourList;
+  assert.strictEqual(hike.day, 2);
+  assert.ok(/Day 3/.test(hike.when) && /07:45/.test(hike.when), hike.when);
+  assert.deepStrictEqual(hike.figs.map((f) => f[0]), ['Distance', 'Ascent', 'Descent', 'Duration', 'Average speed', 'Highest point', 'Lowest point']);
+  assert.ok(hike.line.length <= 120 && hike.profile.length <= 90);
+  assert.deepStrictEqual(hike.positions, ['Fushimi Inari Taisha']);
+  assert.strictEqual(walk.profile, null);
+});
+
+test('a tour map follows the zoom framed for it in the tab; a stale one is ignored', async () => {
+  const { loadTrip, tourMap, renderPdf } = require('../server/report');
+  const h = createMockHost({ ...fixtures, grants: [...GRANTS, 'db:read:files'] });
+  const { body } = await call(h.ctx, '/summary', { tripId: 1, locale: 'en' });
+  assert.strictEqual(body.tourMaps.length, 2);
+  assert.ok(body.tourMaps[0].tracks.length === 1 && body.tourMaps[0].markers.every((m) => m.title));
+  const data = await loadTrip(h.ctx, 1, {});
+  const fit = tourMap(data, data.tours[0], 640, 380).view;
+  const zoomed = { cx: fit.cx, cy: fit.cy, k: fit.k * 3 };
+  assert.strictEqual(tourMap(data, data.tours[0], 640, 380, { view: zoomed }).view.k, zoomed.k);
+  // A view saved for some other place (the tours changed since) falls back to the fitted one.
+  assert.strictEqual(tourMap(data, data.tours[0], 640, 380, { view: { cx: 0, cy: 0, k: zoomed.k } }).view.k, fit.k);
+  const plain = await renderPdf(data, { sections: ['tours'] });
+  const framed = await renderPdf(data, { sections: ['tours'], views: { [`t${data.tours[0].key}`]: [zoomed.cx, zoomed.cy, zoomed.k] } });
+  assert.notStrictEqual(framed.pages.flat().join('\n'), plain.pages.flat().join('\n'));
+  const res = await call(h.ctx, '/report', { tripId: 1, sections: ['tours'], views: { [`t${data.tours[0].key}`]: [zoomed.cx, zoomed.cy, zoomed.k], t9999: [0, 0, 100], 't!': [0, 0, 100] } });
+  assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+});
+
+// ---- saved views and choices (db:own). The mock host's db is canned, so back it with a real
+// in-memory SQLite here, exposing the same query/exec/migrate/tx surface the host gives.
+function sqliteDb() {
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+  const applied = new Set();
+  return {
+    async query(sql, ...args) { return db.prepare(sql).all(...args); },
+    async exec(sql, ...args) { return { changes: Number(db.prepare(sql).run(...args).changes) }; },
+    async migrate(id, sql) { if (applied.has(id)) return { applied: false }; db.exec(sql); applied.add(id); return { applied: true }; },
+    async tx(ops) {
+      db.exec('BEGIN');
+      try {
+        const results = ops.map((o) => (/^\s*select/i.test(o.sql) ? { rows: db.prepare(o.sql).all(...(o.args || [])) } : { changes: Number(db.prepare(o.sql).run(...(o.args || [])).changes) }));
+        db.exec('COMMIT');
+        return { results };
+      } catch (e) { db.exec('ROLLBACK'); throw e; }
+    },
+  };
+}
+const withDb = (h, db = sqliteDb()) => Object.assign(Object.create(h.ctx), { db });
+
+test('dragged map views and tab choices are saved per user and come back with the summary', async () => {
+  const h = host({ grants: [...GRANTS, 'db:own'] });
+  const ctx = withDb(h);
+  const first = await call(ctx, '/summary', { tripId: 1, locale: 'en' });
+  assert.deepStrictEqual(first.body.saved, { views: {}, prefs: {} });
+  assert.strictEqual(first.body.map.key, 'all');
+  assert.deepStrictEqual(first.body.dayMaps.map((m) => m.key), ['d1', 'd2', 'd3', 'd4', 'd5']);
+  assert.ok(first.body.styles.every((s) => s.id && s.name && s.swatch && s.swatch.bg));
+
+  const v = [2.4, 0.66, 9000];
+  const saved = await call(ctx, '/prefs', { tripId: 1, views: { all: v, d2: v, bogus: v, d3: [1, 2] }, prefs: { style: 'dark', paper: 'letter', tourDetail: 'full', sections: ['map', 'costs', 'nope'], evil: 1 } });
+  assert.deepStrictEqual(saved.body, { stored: true, views: 2 });
+  const again = await call(ctx, '/summary', { tripId: 1, locale: 'en' });
+  assert.deepStrictEqual(again.body.saved.views, { all: v, d2: v });
+  assert.deepStrictEqual(again.body.saved.prefs, { style: 'dark', paper: 'letter', tourDetail: 'full', sections: ['map', 'costs'] });
+  assert.strictEqual(again.body.style, 'dark'); // the user's pick wins over the admin default
+
+  // Reset (null) forgets a view; other users and other trips see nothing of it.
+  await call(ctx, '/prefs', { tripId: 1, views: { d2: null } });
+  assert.deepStrictEqual((await call(ctx, '/summary', { tripId: 1, locale: 'en' })).body.saved.views, { all: v });
+  const other = Object.assign(Object.create(ctx), {});
+  const res = await route('/summary').handler({ method: 'POST', path: '/summary', query: {}, body: { tripId: 1, locale: 'en' }, headers: {}, user: { id: 2 } }, other);
+  assert.deepStrictEqual(JSON.parse(res.body).saved.views, {});
+
+  // The PDF uses a saved view even when the tab sends none.
+  const plugin2 = require('../server/index.js');
+  assert.ok(plugin2.deleteUserData && plugin2.exportUserData);
+  const rep = await call(Object.assign(Object.create(ctx), { files: withDb(host({ grants: [...GRANTS, 'db:own'] })).files }), '/report', { tripId: 1, sections: ['map'] });
+  assert.strictEqual(rep.status, 200, JSON.stringify(rep.body));
+
+  // GDPR: export returns the rows, delete removes them.
+  const rows = await plugin.exportUserData({ userId: 1 }, ctx);
+  assert.ok(rows.length >= 5 && rows.every((r) => 'key' in r && 'value' in r));
+  await plugin.deleteUserData({ userId: 1 }, ctx);
+  assert.deepStrictEqual(await plugin.exportUserData({ userId: 1 }, ctx), []);
+});
+
+test('saving is refused for a trip the user cannot see, and degrades without storage', async () => {
+  const ctx = withDb(host({ grants: [...GRANTS, 'db:own'] }));
+  const res = await call(ctx, '/prefs', { tripId: 999, views: { all: [1, 0.5, 900] } });
+  assert.ok(res.status === 403 || res.status === 404 || res.status === 500, String(res.status));
+  // No db:own grant: the summary still works and says storage is unavailable.
+  const noDb = await call(host().ctx, '/summary', { tripId: 1, locale: 'en' });
+  assert.strictEqual(noDb.status, 200);
+  assert.strictEqual(noDb.body.saved, null);
+  const s = await call(host().ctx, '/prefs', { tripId: 1, views: { all: [1, 0.5, 900] } });
+  assert.deepStrictEqual(s.body, { stored: false, views: 1 });
+});
+
+test('a saved view keys on the day id, so reordering days never moves it to another day', async () => {
+  const { loadTrip, renderPdf } = require('../server/report');
+  const fx = structuredClone(fixtures);
+  const data = await loadTrip(createMockHost({ ...fx, grants: GRANTS }).ctx, 1, {});
+  const d2 = data.days[1];
+  const v = { [`d${d2.id}`]: [2.4, 0.62, 30000] };
+  const a = await renderPdf(data, { sections: ['itinerary', 'map'], views: v });
+  // Same days, different order of ids → the view follows its day, not its position.
+  fx.trips['1'].days.reverse();
+  const shuffled = await loadTrip(createMockHost({ ...fx, grants: GRANTS }).ctx, 1, {});
+  assert.strictEqual(shuffled.days.find((d) => d.id === d2.id).id, d2.id);
+  const b = await renderPdf(shuffled, { sections: ['itinerary', 'map'], views: v });
+  assert.strictEqual(a.pages.length, b.pages.length);
+});
+
+test('Markdown in notes prints as clean text: no **, pipes, separator rows or link URLs', async () => {
+  const { blocks } = require('../server/markdown');
+  const note = [
+    '## 今日流程',
+    '**2/21（日）** 早上直接去清水寺 ** 之後沿',
+    '| 路段 | 怎麼走 |',
+    '|---|---|',
+    '| 怎麼搭 | 四條寺町 → 清水寺 |',
+    '- 點開[看路線](https://maps.example.com/route?a=(1)) 共 8 個',
+    '  1. 子項 *重點* `JR`',
+    '- [ ] 帶傘',
+    '---',
+    'Plain line with 5_000 yen and a*b*c',
+  ].join('\n');
+  const b = blocks(note);
+  assert.deepStrictEqual(b.map((x) => x.text), ['今日流程', '2/21（日） 早上直接去清水寺 之後沿', '路段 · 怎麼走', '怎麼搭 · 四條寺町 → 清水寺', '點開看路線 共 8 個', '子項 重點 JR', '帶傘', 'Plain line with 5_000 yen and a*b*c']);
+  assert.deepStrictEqual(b.map((x) => x.bold), [true, false, true, false, false, false, false, false]);
+  assert.deepStrictEqual(b.map((x) => [x.bullet, x.level]), [['', 0], ['', 0], ['', 0], ['', 0], ['•', 0], ['1.', 1], ['☐', 0], ['', 0]]);
+  assert.deepStrictEqual(blocks('just\nplain text').map((x) => x.text), ['just', 'plain text']);
+
+  // In the PDF: the markers never reach the page.
+  const { loadTrip, renderPdf } = require('../server/report');
+  const fx = structuredClone(fixtures);
+  fx.trips['1'].days[0].notes_items = [{ text: note }];
+  fx.trips['1'].days[0].assignments[0].notes = '**Book** [tickets](https://example.com) | early';
+  const data = await loadTrip(createMockHost({ ...fx, grants: GRANTS }).ctx, 1, {});
+  const doc = await renderPdf(data, { sections: ['itinerary'] });
+  const all = doc.pages.flat().join('\n');
+  const hex = (s, bold) => doc._runs(s, bold).map((r) => r.glyphs.map(([g]) => g.toString(16).padStart(4, '0')).join('')).join('');
+  assert.ok(all.includes(hex('今日流程', true)), 'heading printed bold');
+  assert.ok(all.includes(hex('怎麼搭 · 四條寺町 → 清水寺', false)), 'table row printed as a line');
+  assert.ok(!all.includes(hex('|---|---|', false)), 'separator row dropped');
+  assert.ok(!all.includes(hex('https://example.com', false)), 'link URL dropped');
+  assert.ok(all.includes(hex('Book tickets | early', false)), 'inline markers stripped in place notes');
 });

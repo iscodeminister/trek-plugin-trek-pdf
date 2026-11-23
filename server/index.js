@@ -1,7 +1,8 @@
 // Built plugin entry — runs in an isolated child process.
 const { definePlugin } = require('trek-plugin-sdk');
-const { loadTrip, buildMap, renderPdf, costSummary, fileName, SECTIONS } = require('./report');
-const { renderBasemap, toSvg, STYLE_IDS, DEFAULT_STYLE } = require('./basemap');
+const { loadTrip, buildMap, renderPdf, costSummary, tourInfo, tourMap, fileName, SECTIONS } = require('./report');
+const { renderBasemap, toSvg, STYLE_IDS, STYLES, DEFAULT_STYLE } = require('./basemap');
+const prefs = require('./prefs');
 const { normalizeLang, intlLocale, pdfLang, uiBundle } = require('./i18n');
 
 const UI_MAP = [640, 380];
@@ -11,6 +12,13 @@ const basemapOn = (ctx) => ctx.config.basemap !== false && ctx.config.basemap !=
 // The user's pick from the tab, else the admin's default (Instance settings), else Bright.
 const styleOf = (ctx, wanted) => (STYLE_IDS.includes(wanted) ? wanted : STYLE_IDS.includes(ctx.config.map_style) ? ctx.config.map_style : DEFAULT_STYLE);
 const finite = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+
+const userOf = (req) => (req.user && Number.isInteger(Number(req.user.id)) ? Number(req.user.id) : null);
+// A few colours per style, for the tab's style swatches (OpenStreetMap: its standard look).
+const SWATCH = (id) => (STYLES[id]
+  ? { bg: STYLES[id].background, water: STYLES[id].water, park: STYLES[id].park, road: STYLES[id].motorwayInner, casing: STYLES[id].motorwayCasing, minor: STYLES[id].minor }
+  : { bg: '#f2efe9', water: '#aad3df', park: '#c8facc', road: '#e892a2', casing: '#dc2a67', minor: '#ffffff' });
+const STYLE_NAMES = { positron: 'Positron', bright: 'Bright', liberty: 'Liberty', dark: 'Dark', fiord: 'Fiord', osm: 'OpenStreetMap' };
 
 const json = (status, body) => ({ status, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 const LOCALE_RE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
@@ -47,6 +55,13 @@ module.exports = definePlugin({
   async onLoad(ctx) {
     ctx.log.info('trek-pdf loaded');
   },
+  // The only personal data the plugin keeps: each user's saved map views and tab choices.
+  async deleteUserData({ userId }, ctx) {
+    await prefs.deleteUser(ctx, userId);
+  },
+  async exportUserData({ userId }, ctx) {
+    return prefs.exportUser(ctx, userId);
+  },
   routes: [
     {
       // Everything the tab needs for its live preview: its strings, stats, map geometry, cost totals.
@@ -55,7 +70,7 @@ module.exports = definePlugin({
         const { tripId, lang, locale, currency, timeZone } = readInput(req);
         const bad = needTrip(tripId);
         if (bad) return bad;
-        const data = await loadTrip(ctx, tripId, { lang, locale, currency, timeZone });
+        const [data, saved] = await Promise.all([loadTrip(ctx, tripId, { lang, locale, currency, timeZone }), prefs.load(ctx, userOf(req), tripId)]);
         return json(200, {
           // locale = the one the server formatted dates/money with, so the tab's numbers match.
           i18n: { ...uiBundle(lang), locale },
@@ -66,15 +81,32 @@ module.exports = definePlugin({
           stops: data.days.reduce((s, d) => s + d.stops.length, 0),
           unscheduled: data.unscheduled.length,
           lodging: data.lodging.length,
+          tours: data.tours.length,
+          // One interactive map per tour, so its zoom can be framed in the tab and used in the PDF.
+          tourMaps: data.tours.map((tour) => ({ ...tourMap(data, tour, ...UI_MAP, { pad: 60, labels: true }), key: `t${tour.key}` })),
+          // The tab's tour preview: figures as the PDF words them, a thinned track and profile.
+          tourList: data.tours.map((tour) => {
+            const pick = (arr, max) => (arr.length <= max ? arr : Array.from({ length: max }, (_, i) => arr[Math.round((i * (arr.length - 1)) / (max - 1))]));
+            return {
+              key: `t${tour.key}`, name: tour.name, color: tour.color, day: tour.days.length ? tour.days[0] : -1,
+              ...tourInfo(data, tour, true),
+              positions: tour.positions.map((q) => q.name),
+              line: pick(tour.track.line, 120),
+              profile: tour.track.profile ? pick(tour.track.profile, 90).map(([dist, ele]) => [Math.round(dist), Math.round(ele * 10) / 10]) : null,
+            };
+          }),
           costsEnabled: data.costs !== null,
           costItems: data.costs ? data.costs.length : 0,
           costs: costSummary(data),
-          map: buildMap(data, ...UI_MAP),
+          map: { ...buildMap(data, ...UI_MAP), key: 'all' },
           // One zoomed map per day so the tab can drill in (the overview is coarse for multi-city trips).
-          dayMaps: data.days.map((d) => dayMap(d, ...UI_MAP)),
+          dayMaps: data.days.map((d) => ({ ...dayMap(d, ...UI_MAP), key: `d${d.id}` })),
           basemap: basemapOn(ctx),
-          styles: STYLE_IDS,
-          style: styleOf(ctx),
+          styles: STYLE_IDS.map((id) => ({ id, name: STYLE_NAMES[id] || id, swatch: SWATCH(id) })),
+          // The user's own pick (saved), else the admin's default, else Bright.
+          style: styleOf(ctx, saved && saved.prefs.style),
+          // What this user framed and picked before (null: storage unavailable, the tab keeps memory only).
+          saved: saved && { views: saved.views, prefs: prefs.cleanPrefs(saved.prefs, { styles: STYLE_IDS, sections: SECTIONS }) },
         });
       }),
     },
@@ -96,14 +128,14 @@ module.exports = definePlugin({
         const data = await loadTrip(ctx, tripId, { lang, locale, currency, timeZone });
         const style = styleOf(ctx, body.style);
         const basemap = basemapOn(ctx) ? (m, o) => renderBasemap(m, { ...o, lang, style, pdf: true }) : null;
-        // Zoom states from the tab: { '-1' | dayIndex: [cx, cy, k] }, validated.
-        const views = {};
-        if (body.views && typeof body.views === 'object') {
-          for (const [key, v] of Object.entries(body.views).slice(0, 400)) {
-            if (/^(-1|\d{1,4})$/.test(key) && Array.isArray(v) && v.length === 3 && finite(v[0], -Math.PI, Math.PI) && finite(v[1], -3.2, 3.2) && finite(v[2], 10, 2e7)) views[key] = v;
-          }
-        }
-        const pdf = (await renderPdf(data, { sections, paper, basemap, views })).toBuffer();
+        // Zoom states { all | d<dayId> | t<tourKey>: [cx, cy, k] }: the saved ones, then the
+        // tab's live ones on top (null = the user reset that map to fit).
+        const stored = await prefs.load(ctx, userOf(req), tripId);
+        const live = prefs.cleanViews(body.views, { allowNull: true });
+        const views = { ...(stored ? stored.views : {}), ...live };
+        for (const k of Object.keys(views)) if (views[k] === null) delete views[k];
+        const tourDetail = body.tourDetail === 'full' ? 'full' : 'compact';
+        const pdf = (await renderPdf(data, { sections, paper, basemap, views, tourDetail })).toBuffer();
         const name = fileName(data);
         const file = await ctx.files.create(tripId, {
           name,
@@ -113,6 +145,24 @@ module.exports = definePlugin({
         });
         ctx.log.info(`report for trip ${tripId}: ${pdf.length} bytes, ${lang}`);
         return json(200, { file: { id: file && file.id, name, size: pdf.length } });
+      }),
+    },
+    {
+      // Save what the user framed (map views for this trip) and picked (style, sections,
+      // tour detail, paper). Called by the tab after a drag/zoom settles or a choice changes.
+      method: 'POST', path: '/prefs', auth: true,
+      handler: (req, ctx) => handle(async () => {
+        const { tripId, body } = readInput(req);
+        const bad = needTrip(tripId);
+        if (bad) return bad;
+        const userId = userOf(req);
+        if (userId === null) return json(401, { error: 'not signed in' });
+        await ctx.trips.getById(tripId); // membership check: only a trip the user can see
+        const views = prefs.cleanViews(body.views, { allowNull: true });
+        const choices = prefs.cleanPrefs(body.prefs, { styles: STYLE_IDS, sections: SECTIONS });
+        let stored = false;
+        try { stored = await prefs.save(ctx, userId, tripId, { views, prefs: choices }); } catch (e) { ctx.log.warn(`prefs not saved: ${e.message}`); }
+        return json(200, { stored, views: Object.keys(views).length });
       }),
     },
     {

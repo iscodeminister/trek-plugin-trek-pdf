@@ -24,6 +24,8 @@ const TOKENS = new RegExp(`[${CJK}]|[^\\s${CJK}]+|\\s+`, 'g');
 const SIZES = { a4: [595.28, 841.89], letter: [612, 792] };
 const K = 0.5523;
 
+const NO_START = /^[、。，．,.!?！？）」』】〕〉》・：；:;%）\]\)]/;
+
 class PdfDoc {
   constructor(opts = {}) {
     [this.width, this.height] = SIZES[opts.size] || SIZES.a4;
@@ -204,7 +206,8 @@ class PdfDoc {
         if (/^\s+$/.test(tok)) { space = true; continue; }
         const cand = line + (space && line ? ' ' : '') + tok;
         space = false;
-        if (this.measure(cand, size, bold) <= maxW) { line = cand; continue; }
+        // Closing punctuation never starts a line (CJK line-breaking rule): it hangs.
+        if (this.measure(cand, size, bold) <= maxW || (line && NO_START.test(tok) && this.measure(cand, size, bold) <= maxW + size)) { line = cand; continue; }
         if (line) lines.push(line);
         line = '';
         if (this.measure(tok, size, bold) <= maxW) { line = tok; continue; }
